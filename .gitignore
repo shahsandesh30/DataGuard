@@ -1,0 +1,30 @@
+# Data — never commit
+data/
+*.parquet
+*.csv
+*.zip
+!docs/**/*.csv
+
+# Secrets
+.env
+*.pem
+credentials
+.aws/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Models
+models/*.pkl
+models/*.joblib
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
