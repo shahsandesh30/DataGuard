@@ -1,0 +1,122 @@
+<mxfile host="app.diagrams.net" modified="2026-08-11T00:00:00.000Z" agent="DataGuard" version="24.0.0">
+  <diagram name="DataGuard Architecture" id="dataguard-openaq">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="DataGuard &#8212; Trust-Aware Anomaly Detection Architecture" style="text;html=1;align=center;verticalAlign=middle;fontSize=18;fontStyle=1;fontColor=#1F2937;" vertex="1" parent="1">
+          <mxGeometry x="120" y="10" width="600" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="src" value="OpenAQ Open Data Archive&#10;s3://openaq-data-archive&#10;Daily CSV.gz per station" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5E7EB;strokeColor=#6B7280;fontSize=11;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="310" y="60" width="240" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="orch" value="AWS Step Functions&#10;Scheduled orchestration" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#F3F4F6;strokeColor=#9CA3AF;fontSize=11;fontColor=#374151;" vertex="1" parent="1">
+          <mxGeometry x="50" y="155" width="170" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ingest" value="Ingestion&#10;S3 sync / Python / AWS Lambda" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;fontSize=11;fontColor=#1E3A5F;" vertex="1" parent="1">
+          <mxGeometry x="310" y="155" width="240" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="bronze" value="S3 &#8212; BRONZE&#10;Raw, immutable&#10;locationid / year" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;fontSize=11;fontColor=#1E3A5F;" vertex="1" parent="1">
+          <mxGeometry x="310" y="245" width="240" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="glue" value="AWS Glue Crawler&#10;+ Data Catalog&#10;(schema versions)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;fontSize=11;fontColor=#4C1D95;" vertex="1" parent="1">
+          <mxGeometry x="610" y="245" width="170" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="silver" value="S3 &#8212; SILVER&#10;Units, types and parameters&#10;harmonised across providers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;fontSize=11;fontColor=#1E3A5F;" vertex="1" parent="1">
+          <mxGeometry x="310" y="345" width="240" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l1box" value="LAYER 1 &#8212; DATA HEALTH&#10;&quot;Is the data broken?&quot;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;verticalAlign=top;fillColor=#D1FAE5;strokeColor=#059669;fontSize=12;fontStyle=1;fontColor=#064E3B;" vertex="1" parent="1">
+          <mxGeometry x="30" y="445" width="340" height="205" as="geometry" />
+        </mxCell>
+        <mxCell id="l1a" value="Quality metrics per station-day&#10;readings received &#183; null rate &#183; stuck values&#10;negative values &#183; freshness vs 72h SLA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;fontSize=10;fontColor=#064E3B;" vertex="1" parent="1">
+          <mxGeometry x="50" y="495" width="300" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="l1b" value="Distribution drift tests (PSI / KS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;fontSize=10;fontColor=#064E3B;" vertex="1" parent="1">
+          <mxGeometry x="50" y="560" width="300" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="l1c" value="Isolation Forest over metric vectors" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;fontSize=10;fontColor=#064E3B;" vertex="1" parent="1">
+          <mxGeometry x="50" y="602" width="300" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2box" value="LAYER 2 &#8212; POLLUTION EVENTS&#10;&quot;Is the air actually unusual?&quot;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;verticalAlign=top;fillColor=#FEE2E2;strokeColor=#DC2626;fontSize=12;fontStyle=1;fontColor=#7F1D1D;" vertex="1" parent="1">
+          <mxGeometry x="490" y="445" width="340" height="205" as="geometry" />
+        </mxCell>
+        <mxCell id="l2a" value="Feature engineering&#10;station-day levels &#183; regional aggregates&#10;deviation from station baseline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#DC2626;fontSize=10;fontColor=#7F1D1D;" vertex="1" parent="1">
+          <mxGeometry x="510" y="495" width="300" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="l2b" value="Detector ensemble (IF / LOF / DBSCAN)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#DC2626;fontSize=10;fontColor=#7F1D1D;" vertex="1" parent="1">
+          <mxGeometry x="510" y="560" width="300" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="l2c" value="Threshold rules &#8212; guideline exceedance&#10;(weak labels)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#DC2626;fontSize=10;fontColor=#7F1D1D;" vertex="1" parent="1">
+          <mxGeometry x="510" y="602" width="300" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="fusion" value="TRUST FUSION&#10;Join on (station, day) &#8594; trust score&#10;Escalate or quarantine each alert" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontSize=12;fontStyle=1;fontColor=#78350F;" vertex="1" parent="1">
+          <mxGeometry x="270" y="700" width="320" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gold" value="S3 &#8212; GOLD&#10;Scored alerts + quality incidents" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;fontSize=11;fontColor=#1E3A5F;" vertex="1" parent="1">
+          <mxGeometry x="270" y="810" width="320" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="athena" value="Amazon Athena&#10;SQL serving layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;fontSize=11;fontColor=#4C1D95;" vertex="1" parent="1">
+          <mxGeometry x="270" y="900" width="320" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dash" value="Streamlit Dashboard (public URL)&#10;Station map &#183; Incident timeline &#183; Alert queue &#183; Quality scorecard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5E7EB;strokeColor=#6B7280;fontSize=11;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="220" y="990" width="420" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6B7280;endArrow=block;endFill=1;" edge="1" parent="1" source="src" target="ingest">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6B7280;endArrow=block;endFill=1;" edge="1" parent="1" source="ingest" target="bronze">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7C3AED;startArrow=block;startFill=1;endArrow=block;endFill=1;" edge="1" parent="1" source="bronze" target="glue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6B7280;endArrow=block;endFill=1;" edge="1" parent="1" source="bronze" target="silver">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#059669;endArrow=block;endFill=1;" edge="1" parent="1" source="silver" target="l1box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#DC2626;endArrow=block;endFill=1;" edge="1" parent="1" source="silver" target="l2box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="quality incidents" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#059669;endArrow=block;endFill=1;fontSize=10;fontColor=#064E3B;" edge="1" parent="1" source="l1box" target="fusion">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="candidate alerts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#DC2626;endArrow=block;endFill=1;fontSize=10;fontColor=#7F1D1D;" edge="1" parent="1" source="l2box" target="fusion">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6B7280;endArrow=block;endFill=1;" edge="1" parent="1" source="fusion" target="gold">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6B7280;endArrow=block;endFill=1;" edge="1" parent="1" source="gold" target="athena">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6B7280;endArrow=block;endFill=1;" edge="1" parent="1" source="athena" target="dash">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#9CA3AF;endArrow=block;endFill=1;" edge="1" parent="1" source="orch" target="ingest">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend" value="Legend&#10;Blue = storage zones&#10;Purple = catalog / query&#10;Green = Layer 1 (data health)&#10;Red = Layer 2 (pollution events)&#10;Amber = trust fusion&#10;Dashed = orchestration" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D1D5DB;fontSize=10;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontColor=#374151;" vertex="1" parent="1">
+          <mxGeometry x="30" y="960" width="175" height="105" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

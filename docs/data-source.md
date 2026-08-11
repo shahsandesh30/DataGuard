@@ -2,60 +2,66 @@
 
 ## Source
 
-NYC Taxi & Limousine Commission trip record data.
+OpenAQ — open, global air quality data aggregated from governments, research
+institutions and other organisations into a single uniform format.
 
-- Landing page: https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page
-- AWS Open Data registry: https://registry.opendata.aws/nyc-tlc-trip-records-pds/
-- Trip Record User Guide: https://www.nyc.gov/assets/tlc/downloads/pdf/trip_record_user_guide.pdf
-- Working with Parquet: https://www.nyc.gov/assets/tlc/downloads/pdf/working_parquet_format.pdf
+- Documentation: https://docs.openaq.org/
+- About Open Data on AWS: https://docs.openaq.org/aws/about
+- AWS Open Data registry: https://registry.opendata.aws/openaq/
+- Archive bucket: `s3://openaq-data-archive` (public, `us-east-1`, no credentials required)
 
-### URL pattern
+### Archive layout
 
+Daily gzipped CSV files per location:
 
-| Service | Prefix | First published |
-|---|---|---|
-| Yellow taxi | `yellow_tripdata` | 2009-01 |
-| Green taxi | `green_tripdata` | 2013-08 |
-| For-hire vehicle | `fhv_tripdata` | 2015-01 |
-| High-volume FHV | `fhvhv_tripdata` | 2019-02 |
+```
+records/csv.gz/locationid=<ID>/year=<YYYY>/month=<MM>/location-<ID>-<YYYYMMDD>.csv.gz
+```
 
-### Supporting files
+Columns include: `location_id`, `sensors_id`, `location`, `datetime`, `lat`,
+`lon`, `parameter` (pm25, pm10, o3, no2, so2, co, …), `units`, `value`.
 
-- Taxi zone lookup: https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv
-- Taxi zone shapefile: https://d37ci6vzurychx.cloudfront.net/misc/taxi_zones.zip
+OpenAQ states that files are written approximately **72 hours after the end of
+day in the location's timezone**. This is a published delivery commitment —
+late files can be measured against a stated promise rather than a threshold we
+invented.
 
 ## Why this source
 
-The TLC does not collect this data. It is submitted by third-party technology
-providers authorised under the TPEP/LPEP programs, and the TLC states plainly
-that it makes no representation as to its accuracy. This is a real, untrusted,
-publicly republished production pipeline — the exact scenario DataGuard targets.
+OpenAQ does not own or operate the sensors. It republishes whatever
+governments, research groups and other organisations publish, in one uniform
+format. This is a real, untrusted, publicly republished production pipeline —
+the exact scenario DataGuard targets. Data degradation is documented and
+verifiable at the platform level, and sensor failures are directly observable
+in the measurements themselves.
 
 ## Validation ground truth
 
-Layer 1 is validated against degradation events that genuinely occurred. These
-are not injected by the team. Detection of these events without prior labelling
-is the project's primary Layer 1 result.
+Layer 1 is validated against degradation that genuinely occurs in the source.
+These are not injected by the team. Detection of these events without prior
+labelling is the project's primary Layer 1 result.
 
-| # | Event | Period | Expected Layer 1 signal |
+| # | Event | Evidence | Expected Layer 1 signal |
 |---|---|---|---|
-| E1 | COVID-19 demand collapse | 2020-03 to 2020-04 | Volume anomaly (~90% drop) |
-| E2 | CSV to Parquet migration, historical files replaced | 2022-05 | Format/schema discontinuity across back years |
-| E3 | Inconsistent Parquet column types between monthly files | ongoing | Type conformance violation |
-| E4 | HVFHV driver pay / passenger fare columns backfilled to 2019-02 | 2022 | Schema addition + retroactive backfill |
-| E5 | `cbd_congestion_fee` column added (congestion pricing) | 2025-01 | Schema addition |
-| E6 | Publication lag, variable by month (~2 months) | ongoing | Freshness anomaly |
-| E7 | Vendor reporting differences (CMT vs VeriFone) | ongoing | Segment-level distribution drift |
-| E8 | TLC published errata: FHV files re-issued 2017; `improvement_surcharge` added to already-published 2015 files | 2015, 2017 | Silent republication (checksum change on unchanged partition) |
-| E9 | FHV file absent for a month where sibling services published | observed 2026-05 | Completeness gap |
+| E1 | v1 and v2 API endpoints retired 31 January 2025; now return HTTP 410 | Documented by OpenAQ | Platform-level discontinuity for any consumer still on old endpoints |
+| E2 | Files delivered later than the stated 72-hour commitment | Measurable against published promise | Freshness anomaly |
+| E3 | Stuck sensor: identical value reported for days or weeks | Directly observable | Zero-variance run; distribution collapse |
+| E4 | Negative concentrations | Physically impossible | Validity violation |
+| E5 | Sensor stops reporting entirely | Directly observable | Completeness gap |
+| E6 | Partial station outage shifting the regional aggregate | Directly observable | Volume anomaly without corresponding event |
+| E7 | Unit or type inconsistency between providers | Cross-provider comparison | Conformance violation |
+| E8 | Station metadata change (relocation, sensor replacement) | Metadata history | Segment-level distribution drift |
 
-E8 is drawn from the TLC's own published Errata section — an official log of
-retrospective corrections to already-released data. E9 is a live gap in the
-current source.
+## Layer 2 target events
+
+Genuine pollution events appear as large changes in the same measurements:
+bushfire smoke, dust storms, industrial incidents. Rule-based weak labels
+(e.g. sustained multi-station PM2.5 elevation) plus Precision@K with
+two-member independent review, since no ground-truth event list exists.
 
 ## Synthetic injection
 
 Synthetic corruption is used **only** to produce precision/recall curves at
 varying severity on held-out partitions. It is never the primary evidence.
-Injection types: row deletion, null flooding, type flipping, distribution shift,
-partition removal, timestamp skew.
+Injection types: reading deletion, null flooding, stuck-value insertion, unit
+flipping, distribution shift, partition removal, timestamp skew.

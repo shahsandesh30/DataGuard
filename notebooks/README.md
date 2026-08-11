@@ -9,7 +9,7 @@ Clear all outputs before committing — notebook diffs are unreadable otherwise.
 
 | Notebook | Purpose |
 |---|---|
-| `01_source_profiling.ipynb` | First look at a single month; confirm the Parquet type inconsistency by direct inspection |
-| `02_schema_evolution.ipynb` | Compare schemas across 2019–2025; document every difference |
-| `03_quality_metrics_eda.ipynb` | Metric vector distributions; baseline selection |
-| `04_layer2_features.ipynb` | Trip and zone-hour feature exploration |
+| `01_source_profiling.ipynb` | First look at a handful of OpenAQ locations; confirm archive layout, cadence, and self-evident failures (stuck values, negatives) by direct inspection |
+| `02_provider_reconciliation.ipynb` | Compare units, types and reporting cadence across providers; document every difference |
+| `03_quality_metrics_eda.ipynb` | Station-day metric vector distributions; baseline selection for Layer 1 |
+| `04_layer2_features.ipynb` | Station and region level pollution-event feature exploration |
