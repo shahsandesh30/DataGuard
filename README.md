@@ -1,96 +1,122 @@
-# DataGuard
+# DataGuard: Trust-Aware Anomaly Detection for Untrusted Data Pipelines
 
-**Trust-aware anomaly detection for untrusted data pipelines.**
+**PRT661 – Data Science Practice | Charles Darwin University | Semester 2, 2026**
 
-Anomaly detection systems raise alarms when data looks strange. But data can look strange for two very different reasons: something happened in the world, or something broke in the pipeline. Systems that cannot tell these apart flood their users with false alerts until the alerts get ignored.
+DataGuard is a two-layer anomaly detection system for global air quality data. Instead of raising an alert every time a reading looks unusual, it first checks whether the *data itself* was healthy that day. Alerts raised while the underlying data was broken are quarantined for review rather than escalated — reducing false alarms caused by sensor failures, not real pollution events.
 
-DataGuard runs two detection layers over the same pipeline and cross-references them, so every real-world alert carries a trust score derived from the health of the data it came from.
+## Problem
 
----
+Monitoring systems can't always tell the difference between a real event and a broken pipeline. If three of a city's five air quality sensors go offline, the average reading changes — a naive system reports this as "improvement," which is false. DataGuard addresses this by running data-quality detection and pollution-event detection as two separate layers, then fusing them into a trust score before anything reaches a human.
 
-## The problem, in one example
+## Team
 
-A city has five air quality sensors. Three of them stop reporting.
-
-| | What a normal monitor sees | What actually happened |
+| Name | Role | Responsibility |
 |---|---|---|
-| Average pollution reading | Drops sharply — "air quality improved" | Nothing changed in the air |
-| Correct response | — | Fix the pipeline, ignore the "improvement" |
-
-Now compare that with bushfire smoke rolling over the same city: readings spike, and this time the data is healthy and the event is real.
-
-To a conventional detector these look identical — both are large changes in the same measurements. DataGuard separates them: Layer 1 checks whether the data itself is healthy, Layer 2 looks for genuine pollution events, and a fusion component gives every Layer 2 alert a trust score based on Layer 1. Alerts raised while the data was broken are quarantined for review instead of being escalated.
-
----
-
-## Objectives
-
-1. Build an automated pipeline that collects and stores global air quality measurements.
-2. Detect data quality problems (Layer 1).
-3. Detect genuine air pollution events using unsupervised methods (Layer 2).
-4. Measure how much the trust score reduces false alerts.
-5. Deploy a publicly accessible monitoring dashboard.
+| Sandesh Shahi | Project lead | Fusion layer, repo governance, architecture, integration, reporting |
+| Aadarsh Ghimire | Data engineer | Ingestion pipeline, bronze/silver/gold zone design, partitioning, Glue Crawler & Catalog, orchestration |
+| Orchid Shrestha | Data quality engineer | Layer 1 quality metrics, schema drift testing, quality anomaly model |
+| Sandesh Prasad Paudel | ML engineer | Layer 2 feature engineering, anomaly detector ensemble, model evaluation |
+| Shuvechchha Pun | Analytics & visualisation | Gold table design, Athena queries, dashboard build, station mapping |
 
 ## Architecture
 
-Two layers plus a fusion step:
+```
+OpenAQ Open Data Archive (public S3)
+        │
+        ▼
+  Bronze zone (S3)  — raw, immutable, per station/day
+        │
+        ▼
+  Silver zone (S3)  — harmonised units, types, schema
+        │
+   ┌────┴────┐
+   ▼         ▼
+Layer 1    Layer 2
+(data      (pollution
+ health)    events)
+   │         │
+   └────┬────┘
+        ▼
+  Trust Fusion — joins on (station, day), escalates or quarantines
+        │
+        ▼
+  Gold zone (S3) — scored alerts + quality incidents
+        │
+        ▼
+  Amazon Athena (SQL serving layer)
+        │
+        ▼
+  Streamlit dashboard (public URL)
+```
 
-- **Layer 1 — data health.** Computes a quality metric vector per station-day (readings received, missing readings, stuck values, negative concentrations, file lateness against OpenAQ's stated 72-hour delivery commitment, schema drift) and fits an Isolation Forest over the metric time-series to catch multivariate degradation no single threshold would flag.
-- **Layer 2 — domain anomalies.** Unsupervised detection over station-level and region-level pollution features using an ensemble of Isolation Forest, LOF and DBSCAN, with deterministic rules providing weak labels. Targets genuine events: bushfire smoke, dust storms, industrial incidents.
-- **Fusion.** Joins the two on station and time window. Alerts coinciding with quality incidents are quarantined rather than escalated — always retained and displayed for human review, never deleted.
+Batch processing is used throughout — OpenAQ source data is published with an approximate two-month lag, so real-time streaming isn't needed. AWS Step Functions handles scheduled orchestration.
 
-Raw files land unchanged in an S3 **bronze** zone, organised by location and year. A Glue Crawler records the structure of every file, which lets us detect schema changes over time. A **silver** zone holds cleaned data with consistent units and types across all providers. Both detection layers read from silver and write to a **gold** zone, which is queried through Athena and served on a Streamlit dashboard. Step Functions runs the pipeline on a schedule.
+## Tech stack
 
-See [`diagrams/architecture_openaq.drawio`](diagrams/architecture_openaq.drawio) and [`docs/architecture.md`](docs/architecture.md).
+- **Language:** Python (pandas, scikit-learn, PyOD, scipy)
+- **Storage & processing:** Amazon S3, AWS Glue (Crawler + Catalog)
+- **Orchestration:** AWS Lambda, AWS Step Functions
+- **Serving:** Amazon Athena
+- **Dashboard:** Streamlit
+- **Infra:** CloudFormation / Terraform (kept as reproducible scripts, not manual console setup)
+- **Project management:** Jira (Scrum board)
 
-## Data
-
-OpenAQ — global air quality measurements from thousands of sensors, aggregated from governments, research groups and other organisations into a single uniform format.
-
-OpenAQ does not own or operate the sensors; it republishes whatever the underlying sources publish. Sensor-level failures are directly observable in the data (stuck values, negative concentrations, silent dropouts), and platform-level changes are documented and verifiable (the v1/v2 API retirement, the 72-hour file delivery commitment). That is precisely why it suits this project.
-
-- OpenAQ docs: https://docs.openaq.org/
-- AWS Open Data registry: https://registry.opendata.aws/openaq/
-- Archive bucket: `s3://openaq-data-archive` (public, no credentials required)
-
-See [`docs/data-source.md`](docs/data-source.md) for the documented degradation events used as validation ground truth.
-
-## Stack
-
-Amazon S3 · AWS Glue Data Catalog · Amazon Athena · AWS Step Functions · Python (pandas, scikit-learn, scipy, pyarrow) · Streamlit · DuckDB (local fallback)
-
-## Repository layout
+## Repository structure
 
 ```
-docs/          Design documents, planning, risk register, assessment reports
-diagrams/      draw.io sources and exported images
-pipelines/     ingestion, conformance, quality (L1), detection (L2), fusion
-models/        Model cards, evaluation output (trained artefacts gitignored)
-dashboard/     Streamlit application
-notebooks/     Exploratory analysis
-tests/         Unit tests
+DataGuard/
+├── data/sample/          # local OpenAQ samples used for development (gitignored)
+├── notebooks/            # exploration notebooks
+├── src/dataguard/
+│   ├── config.py         # shared constants — bucket names, schema column names
+│   ├── ingestion/        # pulls raw files into bronze
+│   ├── conform/          # bronze → silver harmonisation
+│   ├── quality/          # Layer 1 — data health detection
+│   ├── features/         # Layer 2 — pollution event detection
+│   └── fusion/           # trust scoring, escalate/quarantine logic
+├── dashboard/
+│   └── app.py            # Streamlit app
+├── infra/                # CloudFormation / Terraform scripts
+├── tests/
+├── requirements.txt
+└── README.md
 ```
 
 ## Getting started
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate        # Windows
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-copy .env.example .env         # then fill in your values
-pytest
 ```
 
-## Team
+Create a `.env` file (not committed) with:
+```
+AWS_PROFILE=dataguard-academy
+AWS_REGION=us-east-1
+BUCKET_RAW=dataguard-raw
+BUCKET_SILVER=dataguard-silver
+```
 
-| Member | Role |
-|---|---|
-| Sandesh Shahi | Project lead — fusion layer, repository governance, integration |
-| Aadarsh Ghimire | Data engineer — ingestion, zone design, Glue, orchestration |
-| Orchid Shrestha | Data quality engineer — Layer 1 metrics, drift testing, quality model |
-| Sandesh Prasad Paudel | Machine learning engineer — Layer 2 features, detector ensemble, evaluation |
-| Shuvechchha Pun | Analytics and visualisation — gold tables, Athena queries, dashboard |
+Pull a small OpenAQ sample to develop against (no AWS account required — the archive is public):
+```bash
+aws s3 cp --no-sign-request --recursive \
+  s3://openaq-data-archive/records/csv.gz/locationid=2178/year=2023/month=01/ \
+  ./data/sample/
+```
 
-## Unit context
+## Project status
 
-PRT661 Data Science Practice, Charles Darwin University. Theme 3 — Operational Anomaly Detection and Intelligent Monitoring.
+| Phase | Deliverable | Gate | Status |
+|---|---|---|---|
+| Foundation | Ingestion automated; bronze zone populated; Glue Catalog active | Data queryable via Athena | In progress |
+| Conformance | Silver zone; consistent units/types across providers | Single queryable table | Not started |
+| Layer 1 | Quality metrics; drift tests; anomaly model | Detects known failures unprompted | Not started |
+| Layer 2 | Pollution event features; detector ensemble | Ranked anomaly output | Not started |
+| Fusion | Trust scoring; dashboard deployed | Public URL live | Not started |
+| Consolidation | Documentation, final report, presentation | Submission | Not started |
+
+## Links
+
+- Jira board: see team workspace
+- Assessment 1 (Project Proposal and Design) — submitted Aug 11, 2026
