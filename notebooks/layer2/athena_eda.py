@@ -20,26 +20,22 @@ from pathlib import Path
 import awswrangler as wr
 
 # ---- adjust these for your environment ----
-# GLUE_DATABASE = "your_glue_database"
+GLUE_DATABASE = "dataguard_db"
 SQL_FILE = Path(__file__).parent / "athena_queries.sql"
-# OUTPUT_DIR = Path(__file__).parent / "eda_results"
-# S3_OUTPUT_PATH = None  # e.g. "s3://your-bucket/athena-query-results/" — leave
-                       # None to use the workgroup's configured default
+OUTPUT_DIR = Path(__file__).parent / "eda_results"
+S3_OUTPUT_PATH = "s3://aws-athena-query-results-025779546330-ap-southeast-2/" 
 
 
 def split_sql_statements(sql_text: str) -> list[tuple[str, str]]:
-    """Split the .sql file into (label, query) pairs.
-
-    Assumes each query block is preceded by a numbered comment header like:
-        -- 3. What exact parameter names/casing exist?
-    Falls back to just numbering queries sequentially if no header is found.
-    """
-    # Strip block-comment banner lines (====...) but keep numbered headers
+    # Split the .sql file into (label, query) pairs.
     lines = sql_text.splitlines()
     blocks: list[str] = []
     current: list[str] = []
+    labels: list[str] = []
     for line in lines:
         if line.strip().startswith("-- "):
+            label = line.strip().removeprefix("-- ").strip()
+            labels.append(label)
             continue
         current.append(line)
         if line.strip().endswith(";"):
@@ -50,13 +46,8 @@ def split_sql_statements(sql_text: str) -> list[tuple[str, str]]:
 
     labeled = []
     for i, block in enumerate(blocks, start=1):
-        header_match = re.search(r"--\s*(\d+\..*)", block)
-        label = header_match.group(1).strip() if header_match else f"query_{i}"
-        # keep only actual SQL (drop pure comment lines) for execution,
-        # but Athena tolerates leading comments fine, so just strip empties
-        query = block.strip()
-        if query:
-            labeled.append((label, query))
+        if labels[i-1] and block:
+            labeled.append((labels[i-1], block.strip()))
     return labeled
 
 
@@ -64,31 +55,31 @@ def main() -> None:
     sql_text = SQL_FILE.read_text()
     queries = split_sql_statements(sql_text)
     print(f"Found {len(queries)} queries in {SQL_FILE.name}\n")
-    print(queries[0][1])  # print first query for sanity check
-    
-    # OUTPUT_DIR.mkdir(exist_ok=True)
+    print(queries[0][0])  # print first query for sanity check
 
-    # for label, query in queries:
-    #     print(f"--- Running: {label} ---")
-    #     try:
-    #         df = wr.athena.read_sql_query(
-    #             sql=query,
-    #             database=GLUE_DATABASE,
-    #             s3_output=S3_OUTPUT_PATH,
-    #             ctas_approach=False,  # simpler/faster for small EDA result sets
-    #         )
-    #     except Exception as e:
-    #         print(f"  FAILED: {e}\n")
-    #         continue
+    OUTPUT_DIR.mkdir(exist_ok=True)
 
-    #     print(df.head(20).to_string(index=False))
-    #     print(f"  ({len(df)} rows)\n")
+    for label, query in queries[:1]:
+        print(f"--- Running: {label} ---")
+        try:
+            df = wr.athena.read_sql_query(
+                sql=query,
+                database=GLUE_DATABASE,
+                s3_output=S3_OUTPUT_PATH,
+                ctas_approach=False,  # simpler/faster for small EDA result sets
+            )
+        except Exception as e:
+            print(f"  FAILED: {e}\n")
+            continue
 
-    #     # save each result to CSV for later reference / sharing with teammates
-    #     safe_name = re.sub(r"[^\w]+", "_", label)[:60].strip("_")
-    #     out_path = OUTPUT_DIR / f"{safe_name}.csv"
-    #     df.to_csv(out_path, index=False)
-    #     print(f"  saved -> {out_path}\n")
+        print(df.head(20).to_string(index=False))
+        print(f"  ({len(df)} rows)\n")
+
+        # save each result to CSV for later reference / sharing with teammates
+        # safe_name = re.sub(r"[^\w]+", "_", label)[:60].strip("_")
+        # out_path = OUTPUT_DIR / f"{safe_name}.csv"
+        # df.to_csv(out_path, index=False)
+        # print(f"  saved -> {out_path}\n")
 
 
 if __name__ == "__main__":
