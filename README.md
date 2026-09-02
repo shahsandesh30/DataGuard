@@ -65,18 +65,19 @@ Batch processing is used throughout — OpenAQ source data is published with an 
 
 ```
 DataGuard/
-├── data/sample/          # local OpenAQ samples used for development (gitignored)
-├── notebooks/            # exploration notebooks
-├── src/dataguard/
-│   ├── config.py         # shared constants — bucket names, schema column names
+├── data/
+│   ├── bronze/locationid=<ID>/year=<YYYY>/location-<ID>-<YYYYMMDD>.csv.gz
+│   └── silver/locationid=<ID>/year=<YYYY>/<export_id>   # Parquet
+├── notebooks/
+├── pipelines/
+│   ├── config.py
 │   ├── ingestion/        # pulls raw files into bronze
-│   ├── conform/          # bronze → silver harmonisation
+│   ├── conformance/      # bronze → silver harmonisation
 │   ├── quality/          # Layer 1 — data health detection
-│   ├── features/         # Layer 2 — pollution event detection
+│   ├── detection/        # Layer 2 — pollution event detection
 │   └── fusion/           # trust scoring, escalate/quarantine logic
 ├── dashboard/
-│   └── app.py            # Streamlit app
-├── infra/                # CloudFormation / Terraform scripts
+│   └── app.py
 ├── tests/
 ├── requirements.txt
 └── README.md
@@ -86,33 +87,74 @@ DataGuard/
 
 ```bash
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Create a `.env` file (not committed) with:
-```
-AWS_PROFILE=dataguard-academy
-AWS_REGION=us-east-1
-BUCKET_RAW=dataguard-raw
-BUCKET_SILVER=dataguard-silver
+Copy `.env.example` to `.env` and adjust if needed. Local bronze/silver paths default to `data/bronze` and `data/silver` — no AWS account is required for development.
+
+Fetch OpenAQ archive files into bronze (public bucket, unsigned requests) and build the silver table:
+
+```bash
+python -m pipelines run --locations 2178 --start 2023-01-01 --end 2023-01-31
 ```
 
-Pull a small OpenAQ sample to develop against (no AWS account required — the archive is public):
+That command:
+
+1. Adopts any flat `location-*.csv.gz` files (or legacy `records/csv.gz/...` tree) into bronze layout
+2. Downloads missing location-days from `s3://openaq-data-archive`
+3. Writes conformed Parquet exports to `data/silver/locationid=<ID>/year=<YYYY>/`
+
+**Local zone layouts:**
+
+| Zone | Path pattern | Format |
+|---|---|---|
+| Bronze | `data/bronze/locationid=<ID>/year=<YYYY>/location-<ID>-<YYYYMMDD>.csv.gz` | gzip CSV, as fetched |
+| Silver | `data/silver/locationid=<ID>/year=<YYYY>/<timestamp>_qnxhe_<uuid>` | Parquet (8 columns) |
+
+Silver columns: `sensor_id`, `location`, `datetime`, `latitude`, `longitude`, `parameter`, `unit`, `value`.
+
+Ingest or conform can also be run separately:
+
 ```bash
-aws s3 cp --no-sign-request --recursive \
-  s3://openaq-data-archive/records/csv.gz/locationid=2178/year=2023/month=01/ \
-  ./data/sample/
+python -m pipelines ingest --locations 1544061 1601414 --start 2026-01-01 --end 2026-01-31
+python -m pipelines conform
 ```
+
+Build silver and Layer 1 from bronze already on disk (no ingest):
+
+```bash
+python -m pipelines conform
+python -m pipelines quality
+```
+
+Gold output:
+
+- Layer 1: `data/gold/layer1/quality_metrics/`, `data/gold/layer1/quality_incidents/`
+- Layer 2: `data/gold/layer2/event_features/`, `data/gold/layer2/event_alerts/`
+
+```bash
+python -m pipelines conform
+python -m pipelines quality
+python -m pipelines detect
+```
+
+Or run the full pipeline:
+
+```bash
+python -m pipelines run --locations 1544061 1601414 2455394 6430870 --start 2026-01-01 --end 2026-01-31
+```
+
+See `notebooks/01_bronze_profiling.ipynb`, `notebooks/02_silver_conformance.ipynb`, `notebooks/03_quality_metrics_eda.ipynb`, `notebooks/04_layer2_features.ipynb`, and `notebooks/data_test.ipynb`.
 
 ## Project status
 
 | Phase | Deliverable | Gate | Status |
 |---|---|---|---|
-| Foundation | Ingestion automated; bronze zone populated; Glue Catalog active | Data queryable via Athena | In progress |
-| Conformance | Silver zone; consistent units/types across providers | Single queryable table | Not started |
-| Layer 1 | Quality metrics; drift tests; anomaly model | Detects known failures unprompted | Not started |
-| Layer 2 | Pollution event features; detector ensemble | Ranked anomaly output | Not started |
+| Foundation | Ingestion automated; bronze zone populated; Glue Catalog active | Data queryable via Athena | In progress (local bronze working) |
+| Conformance | Silver zone; consistent units/types across providers | Single queryable table | In progress (local silver: locationid/year Parquet exports) |
+| Layer 1 | Quality metrics; drift tests; anomaly model | Detects known failures unprompted | In progress (rules + gold working; IF gated on history) |
+| Layer 2 | Pollution event features; detector ensemble | Ranked anomaly output | In progress (features + ensemble; gated on history) |
 | Fusion | Trust scoring; dashboard deployed | Public URL live | Not started |
 | Consolidation | Documentation, final report, presentation | Submission | Not started |
 
