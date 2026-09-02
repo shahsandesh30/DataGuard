@@ -6,9 +6,9 @@ See `diagrams/architecture_openaq.drawio` for the diagram source.
 
 | Zone | Bucket | Format | Contents |
 |---|---|---|---|
-| Bronze | `dataguard-bronze` | csv.gz, as published | Raw OpenAQ archive files, byte-identical to source, organised by location and year, never modified |
-| Silver | `dataguard-silver` | Parquet, Snappy | Cleaned measurements with consistent units and types across all providers; one queryable table |
-| Gold | `dataguard-gold` | Parquet | Layer 1 quality incidents, Layer 2 scored alerts, fusion output with trust scores |
+| Bronze | `dataguard-bronze` | csv.gz | Raw daily files under `locationid=<ID>/year=<YYYY>/` |
+| Silver | `dataguard-silver` | Parquet | Conformed exports under `locationid=<ID>/year=<YYYY>/` |
+| Gold | `dataguard-gold` | Parquet | Layer 1 under `layer1/` (quality metrics, incidents); Layer 2 under `layer2/` (event features, ranked alerts); fusion output with trust scores |
 
 A Glue Crawler catalogues every bronze file, so structural changes in the
 source are recorded over time and become detectable as schema drift.
