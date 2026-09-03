@@ -14,6 +14,7 @@ dedicated "athena-query-results" bucket).
 
 from __future__ import annotations
 
+import csv
 import re
 from pathlib import Path
 
@@ -22,7 +23,7 @@ import awswrangler as wr
 # ---- adjust these for your environment ----
 GLUE_DATABASE = "dataguard_db"
 SQL_FILE = Path(__file__).parent / "athena_queries.sql"
-OUTPUT_DIR = Path(__file__).parent / "eda_results"
+OUTPUT_DIR = Path(__file__).parent / "eda_results/query_results.txt"
 S3_OUTPUT_PATH = "s3://aws-athena-query-results-025779546330-ap-southeast-2/" 
 
 
@@ -55,11 +56,10 @@ def main() -> None:
     sql_text = SQL_FILE.read_text()
     queries = split_sql_statements(sql_text)
     print(f"Found {len(queries)} queries in {SQL_FILE.name}\n")
-    print(queries[0][0])  # print first query for sanity check
 
-    OUTPUT_DIR.mkdir(exist_ok=True)
+    OUTPUT_DIR.parent.mkdir(exist_ok=True)
 
-    for label, query in queries[:1]:
+    for i, (label, query) in enumerate(queries):
         print(f"--- Running: {label} ---")
         try:
             df = wr.athena.read_sql_query(
@@ -72,7 +72,7 @@ def main() -> None:
             print(f"  FAILED: {e}\n")
             continue
 
-        print(df.head(20).to_string(index=False))
+        print(df.head(10).to_string(index=False))
         print(f"  ({len(df)} rows)\n")
 
         # save each result to CSV for later reference / sharing with teammates
@@ -80,6 +80,11 @@ def main() -> None:
         # out_path = OUTPUT_DIR / f"{safe_name}.csv"
         # df.to_csv(out_path, index=False)
         # print(f"  saved -> {out_path}\n")
+        mode = 'w' if i == 0 else 'a'
+        with open(OUTPUT_DIR, mode) as f:
+            f.write(f"\n--- {label} ---\n")
+            f.flush()
+            df.to_csv(OUTPUT_DIR, sep='\t', index=False, header=True, mode='a')
 
 
 if __name__ == "__main__":
