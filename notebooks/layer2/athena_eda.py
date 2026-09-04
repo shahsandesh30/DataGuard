@@ -1,30 +1,22 @@
 """
 Run the EDA queries in athena_eda_queries.sql against Athena and print/save
 the results.
-
-Requires:
-    pip install awswrangler boto3
-
-Requires AWS credentials configured locally (aws configure / SSO login) with
-permission to run Athena queries against the Glue database, and an Athena
-query result S3 bucket/location set up (ask your data engineer teammate if
-unsure — most AWS accounts have a default one, or your team may have a
-dedicated "athena-query-results" bucket).
 """
 
 from __future__ import annotations
-
-import csv
-import re
 from pathlib import Path
+import sys
 
-import awswrangler as wr
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from pipelines.detection.io import read_silver_via_athena
 
 # ---- adjust these for your environment ----
-GLUE_DATABASE = "dataguard_db"
+# GLUE_DATABASE = "dataguard_db"
 SQL_FILE = Path(__file__).parent / "athena_queries.sql"
 OUTPUT_DIR = Path(__file__).parent / "eda_results/query_results.txt"
-S3_OUTPUT_PATH = "s3://aws-athena-query-results-025779546330-ap-southeast-2/" 
+# S3_OUTPUT_PATH = "s3://aws-athena-query-results-025779546330-ap-southeast-2/" 
 
 
 def split_sql_statements(sql_text: str) -> list[tuple[str, str]]:
@@ -62,12 +54,13 @@ def main() -> None:
     for i, (label, query) in enumerate(queries):
         print(f"--- Running: {label} ---")
         try:
-            df = wr.athena.read_sql_query(
-                sql=query,
-                database=GLUE_DATABASE,
-                s3_output=S3_OUTPUT_PATH,
-                ctas_approach=False,  # simpler/faster for small EDA result sets
-            )
+            # df = wr.athena.read_sql_query(
+            #     sql=query,
+            #     database=GLUE_DATABASE,
+            #     s3_output=S3_OUTPUT_PATH,
+            #     ctas_approach=False,  # simpler/faster for small EDA result sets
+            # )
+            df = read_silver_via_athena(sql=query)
         except Exception as e:
             print(f"  FAILED: {e}\n")
             continue
