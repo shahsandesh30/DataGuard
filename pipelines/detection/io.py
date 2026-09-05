@@ -14,12 +14,12 @@ import pandas as pd
 from pipelines.config import Settings, load_settings
 
 # constant prefixes for S3 paths and Glue tables
-SILVER_PREFIX = "silver/"              
-GOLD_FEATURES_PREFIX = "event_features/"   
-GOLD_LABELS_PREFIX = "event_weak_labels/"  
+SILVER_PREFIX = "silver"      
+SILVER_DERIVED_PREFIX = "derived"    
+SILVER_WEAK_LABELS_PREFIX = "weak_labels"  
 
-GOLD_FEATURES_TABLE = "event_features"
-GOLD_LABELS_TABLE = "event_weak_labels"
+DERIVED_FEATURES_TABLE = "event_features"
+WEAK_LABELS_TABLE = "event_weak_labels"
 
 
 def _s3_output(settings: Settings) -> str | None:
@@ -28,15 +28,19 @@ def _s3_output(settings: Settings) -> str | None:
 
 
 def read_silver(
-    settings: Settings | None = None,
-    prefix: str = SILVER_PREFIX,
+    settings: Settings | None = None
 ) -> pd.DataFrame:
-    """Read silver air-quality data from S3 as a single DataFrame.
+    """Read silver air-quality data from Glue database as a single DataFrame.
     Purpose: Feature engineering and weak-label generation for the detection layer (Layer 2).
     """
     settings = settings or load_settings()
-    path = f"s3://{settings.silver_bucket}/{prefix}"
-    return wr.s3.read_parquet(path=path, dataset=True)
+    print(f"Reading silver data from Glue database: {settings.glue_database}")
+    return wr.athena.read_sql_query(
+        sql="SELECT * FROM silver_data",
+        database=settings.glue_database,
+        s3_output=_s3_output(settings),
+        ctas_approach=False
+    )
 
 
 def read_silver_via_athena(
@@ -56,49 +60,48 @@ def read_silver_via_athena(
     )
 
 
-def write_gold_features(
+def write_derived_features(
     features: pd.DataFrame,
     settings: Settings | None = None,
-    prefix: str = GOLD_FEATURES_PREFIX,
+    prefix: str = SILVER_DERIVED_PREFIX,
 ) -> None:
-    """Write the engineered feature table to the gold bucket, partitioned by
-    year and parameter, and register/update it in the Glue Catalog so it's
-    queryable via Athena immediately.
+    """Write the engineered feature table to the silver bucket, derived folder
+    partitioned by year and parameter
     """
     settings = settings or load_settings()
-    path = f"s3://{settings.gold_bucket}/{prefix}"
+    path = f"s3://{settings.silver_bucket}/{prefix}/"
     wr.s3.to_parquet(
         df=features,
         path=path,
         dataset=True,
         mode="overwrite_partitions",
-        partition_cols=["year", "parameter"],
-        database=settings.glue_database,
-        table=GOLD_FEATURES_TABLE,
-    )
-
-
-def write_gold_labels(
-    labels: pd.DataFrame,
-    settings: Settings | None = None,
-    prefix: str = GOLD_LABELS_PREFIX,
-) -> None:
-    """Write the weak-label table to the gold bucket as its own dataset,
-    kept separate from the feature table since labels are heuristic
-    evaluation signals, not features to train on.
-
-    Expects `labels` to at minimum carry the join keys
-    (location_id, parameter, datetime_utc, year) plus the label column,
-    so it can be joined back to event_features by anyone downstream.
-    """
-    settings = settings or load_settings()
-    path = f"s3://{settings.gold_bucket}/{prefix}"
-    wr.s3.to_parquet(
-        df=labels,
-        path=path,
-        dataset=True,
-        mode="overwrite_partitions",
         partition_cols=["locationid", "year"],
         database=settings.glue_database,
-        table=GOLD_LABELS_TABLE,
+        table=DERIVED_FEATURES_TABLE,
     )
+
+
+# def write_gold_labels(
+#     labels: pd.DataFrame,
+#     settings: Settings | None = None,
+#     prefix: str = GOLD_LABELS_PREFIX,
+# ) -> None:
+#     """Write the weak-label table to the gold bucket as its own dataset,
+#     kept separate from the feature table since labels are heuristic
+#     evaluation signals, not features to train on.
+
+#     Expects `labels` to at minimum carry the join keys
+#     (location_id, parameter, datetime_utc, year) plus the label column,
+#     so it can be joined back to event_features by anyone downstream.
+#     """
+#     settings = settings or load_settings()
+#     path = f"s3://{settings.gold_bucket}/{prefix}"
+#     wr.s3.to_parquet(
+#         df=labels,
+#         path=path,
+#         dataset=True,
+#         mode="overwrite_partitions",
+#         partition_cols=["locationid", "year"],
+#         database=settings.glue_database,
+#         table=WEAK_LABELS_TABLE,
+#     )
