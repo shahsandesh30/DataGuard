@@ -9,26 +9,26 @@ concentrations, stuck values) to detect them.
 import pandas as pd
 
 SILVER_COLUMNS = [
-    "location_id",
+    "locationid",
     "sensor_id",
-    "location_name",
-    "datetime_utc",
-    "lat",
-    "lon",
+    "location",
+    "datetime",
+    "latitude",
+    "longitude",
     "parameter",
     "value",
     "unit",
+    "year"
 ]
 
 # Target unit per parameter. Providers disagree (e.g. ppm vs µg/m³); silver
 # holds exactly one unit per parameter.
 CANONICAL_UNITS = {
+    "pm1": "µg/m³",
     "pm25": "µg/m³",
-    "pm10": "µg/m³",
-    "o3": "µg/m³",
-    "no2": "µg/m³",
-    "so2": "µg/m³",
-    "co": "µg/m³",
+    "relativehumidity": "%",
+    "temperature": "c",
+    "um003": "particles/cm³"
 }
 
 
