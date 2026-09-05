@@ -28,8 +28,7 @@ def _s3_output(settings: Settings) -> str | None:
 
 
 def read_silver(
-    settings: Settings | None = None,
-    prefix: str = SILVER_PREFIX,
+    settings: Settings | None = None
 ) -> pd.DataFrame:
     """Read silver air-quality data from Glue database as a single DataFrame.
     Purpose: Feature engineering and weak-label generation for the detection layer (Layer 2).
@@ -39,6 +38,7 @@ def read_silver(
     return wr.athena.read_sql_query(
         sql="SELECT * FROM silver_data",
         database=settings.glue_database,
+        s3_output=_s3_output(settings),
         ctas_approach=False
     )
 
@@ -75,7 +75,7 @@ def write_derived_features(
         path=path,
         dataset=True,
         mode="overwrite_partitions",
-        partition_cols=["year", "parameter"],
+        partition_cols=["locationid", "year"],
         database=settings.glue_database,
         table=DERIVED_FEATURES_TABLE,
     )

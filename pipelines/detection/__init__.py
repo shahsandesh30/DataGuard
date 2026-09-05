@@ -9,8 +9,8 @@ def main() -> None:
     features = build_event_features(silver)
     print(f"Built feature table: {len(features)} rows, {features.shape[1]} columns")
 
-    # write_derived_features(features)
-    # print("Wrote feature table to silver/derived")
+    write_derived_features(features)
+    print("Wrote feature table to silver/derived")
 
 
 if __name__ == "__main__":
