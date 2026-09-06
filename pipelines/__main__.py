@@ -18,6 +18,7 @@ from pathlib import Path
 from pipelines.config import DEFAULT_LOCATION_IDS, load_settings
 from pipelines.conformance.conform import build_silver
 from pipelines.detection.build import build_detection
+from pipelines.fusion.build import build_fusion
 from pipelines.ingestion.fetch import adopt_flat_bronze, fetch_range
 from pipelines.quality.build import build_quality
 
@@ -46,7 +47,7 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m pipelines",
-        description="DataGuard bronze ingestion, silver conformance, Layer 1 quality, Layer 2 detection.",
+        description="DataGuard bronze ingestion, silver conformance, Layer 1 quality, Layer 2 detection, fusion.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -66,7 +67,13 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     detect = sub.add_parser("detect", help="Build Layer 2 event features and ranked alerts (gold)")
     _add_common(detect)
 
-    run = sub.add_parser("run", help="Adopt/fetch bronze, build silver, Layer 1 quality, Layer 2 detection")
+    fuse_cmd = sub.add_parser("fuse", help="Trust-score Layer 2 alerts using Layer 1 incidents (gold)")
+    _add_common(fuse_cmd)
+
+    run = sub.add_parser(
+        "run",
+        help="Adopt/fetch bronze, build silver, Layer 1 quality, Layer 2 detection, fusion",
+    )
     run.add_argument("--locations", type=int, nargs="+", default=DEFAULT_LOCATION_IDS)
     run.add_argument("--start", type=date.fromisoformat, required=True)
     run.add_argument("--end", type=date.fromisoformat, required=True)
@@ -149,6 +156,20 @@ def _cmd_detect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_fuse(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    gold_root = args.gold_root or settings.gold_root
+    result = build_fusion(gold_root=gold_root)
+    logging.info(
+        "Fusion: %s alerts (%s escalated, %s quarantined) -> %s",
+        result.alert_rows,
+        result.escalated,
+        result.quarantined,
+        result.output_path,
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = _parse_args(argv)
@@ -160,11 +181,14 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_quality(args)
     if args.command == "detect":
         return _cmd_detect(args)
+    if args.command == "fuse":
+        return _cmd_fuse(args)
     ingest_code = _cmd_ingest(args)
     conform_code = _cmd_conform(args)
     quality_code = _cmd_quality(args)
     detect_code = _cmd_detect(args)
-    return ingest_code or conform_code or quality_code or detect_code
+    fuse_code = _cmd_fuse(args)
+    return ingest_code or conform_code or quality_code or detect_code or fuse_code
 
 
 if __name__ == "__main__":

@@ -132,11 +132,13 @@ Gold output:
 
 - Layer 1: `data/gold/layer1/quality_metrics/`, `data/gold/layer1/quality_incidents/`
 - Layer 2: `data/gold/layer2/event_features/`, `data/gold/layer2/event_alerts/`
+- Fusion: `data/gold/fusion/trust_alerts/`
 
 ```bash
 python -m pipelines conform
 python -m pipelines quality
 python -m pipelines detect
+python -m pipelines fuse
 ```
 
 Or run the full pipeline:
@@ -145,7 +147,15 @@ Or run the full pipeline:
 python -m pipelines run --locations 1544061 1601414 2455394 6430870 --start 2026-01-01 --end 2026-01-31
 ```
 
-See `notebooks/01_bronze_profiling.ipynb`, `notebooks/02_silver_conformance.ipynb`, `notebooks/03_quality_metrics_eda.ipynb`, `notebooks/04_layer2_features.ipynb`, and `notebooks/data_test.ipynb`.
+See `notebooks/01_bronze_profiling.ipynb`, `notebooks/02_silver_conformance.ipynb`, `notebooks/03_quality_metrics_eda.ipynb`, `notebooks/04_detection_features.ipynb`, `notebooks/05_fusion_trust.ipynb`, `notebooks/06_dashboard_map.ipynb`, and `notebooks/data_test.ipynb`.
+
+## Dashboard
+
+```bash
+streamlit run dashboard/app.py
+```
+
+Local gold + bronze: sidebar as-of date, trust-scored alerts, Layer 1 health, and a color-coded station map (escalated / quarantined / quality_only / monitored).
 
 ## Project status
 
@@ -155,7 +165,7 @@ See `notebooks/01_bronze_profiling.ipynb`, `notebooks/02_silver_conformance.ipyn
 | Conformance | Silver zone; consistent units/types across providers | Single queryable table | In progress (local silver: locationid/year Parquet exports) |
 | Layer 1 | Quality metrics; drift tests; anomaly model | Detects known failures unprompted | In progress (rules + gold working; IF gated on history) |
 | Layer 2 | Pollution event features; detector ensemble | Ranked anomaly output | In progress (features + ensemble; gated on history) |
-| Fusion | Trust scoring; dashboard deployed | Public URL live | Not started |
+| Fusion | Trust scoring; dashboard deployed | Public URL live | In progress (trust engine + local dashboard; deploy deferred) |
 | Consolidation | Documentation, final report, presentation | Submission | Not started |
 
 ## Links

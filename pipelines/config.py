@@ -34,6 +34,11 @@ WEAK_LABEL_PM25_RATIO = 2.0
 WEAK_LABEL_MIN_LOCATIONS = 2
 DEFAULT_LOCATION_IDS = [1544061, 1601414, 2455394, 6430870, 2178]
 
+# Fusion — trust scoring (Layer 1 × Layer 2).
+SEVERITY_PENALTY = {"low": 0.2, "medium": 0.4, "high": 0.7}
+FUSION_STATUS_ESCALATED = "escalated"
+FUSION_STATUS_QUARANTINED = "quarantined"
+
 
 def _env_path(name: str, default: str) -> Path:
     return Path(os.getenv(name, default))

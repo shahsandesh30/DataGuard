@@ -8,7 +8,7 @@ See `diagrams/architecture_openaq.drawio` for the diagram source.
 |---|---|---|---|
 | Bronze | `dataguard-bronze` | csv.gz | Raw daily files under `locationid=<ID>/year=<YYYY>/` |
 | Silver | `dataguard-silver` | Parquet | Conformed exports under `locationid=<ID>/year=<YYYY>/` |
-| Gold | `dataguard-gold` | Parquet | Layer 1 under `layer1/` (quality metrics, incidents); Layer 2 under `layer2/` (event features, ranked alerts); fusion output with trust scores |
+| Gold | `dataguard-gold` | Parquet | Layer 1 under `layer1/` (quality metrics, incidents); Layer 2 under `layer2/` (event features, ranked alerts); fusion under `fusion/trust_alerts/` with trust scores |
 
 A Glue Crawler catalogues every bronze file, so structural changes in the
 source are recorded over time and become detectable as schema drift.
