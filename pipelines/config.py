@@ -6,6 +6,10 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # OpenAQ public archive on AWS Open Data. Public bucket, no credentials needed.
 OPENAQ_ARCHIVE_BUCKET = "openaq-data-archive"
 OPENAQ_ARCHIVE_REGION = "us-east-1"
