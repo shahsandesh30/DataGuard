@@ -80,6 +80,20 @@ def write_derived_features(
         table=DERIVED_FEATURES_TABLE,
     )
 
+def read_derived_features(
+    settings: Settings | None = None
+) -> pd.DataFrame:
+    """Read derived features from the Glue database as a single DataFrame.
+    Purpose: Fitting detection models.
+    """
+    settings = settings or load_settings()
+    print(f"Reading derived features from Glue database: {settings.glue_database}")
+    return wr.athena.read_sql_query(
+        sql="SELECT * FROM event_features",
+        database=settings.glue_database,
+        s3_output=_s3_output(settings),
+        ctas_approach=False
+    )
 
 # def write_gold_labels(
 #     labels: pd.DataFrame,
