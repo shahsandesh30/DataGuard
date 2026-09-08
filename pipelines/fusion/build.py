@@ -44,7 +44,7 @@ def build_fusion(gold_root: Path | None = None) -> FusionBuildResult:
     fused = fuse(incidents, alerts)
 
     fusion_root = gold / "fusion"
-    alerts_path = _write_partitioned(fused, fusion_root, "trust_alerts", ["location_id", "date_local"])
+    alerts_path = _write_partitioned(fused, fusion_root, "trust_alerts", ["locationid", "date_local"])
 
     escalated = int((fused["status"] == "escalated").sum()) if not fused.empty else 0
     quarantined = int((fused["status"] == "quarantined").sum()) if not fused.empty else 0

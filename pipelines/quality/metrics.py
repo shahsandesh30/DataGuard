@@ -22,7 +22,7 @@ from pipelines.conformance.units import CANONICAL_UNITS, canonical_parameter, no
 from pipelines.ingestion.fetch import bronze_path, parse_bronze_filename
 
 SENSOR_DAY_COLUMNS = [
-    "location_id",
+    "locationid",
     "sensor_id",
     "parameter",
     "date_local",
@@ -39,7 +39,7 @@ SENSOR_DAY_COLUMNS = [
 ]
 
 STATION_DAY_COLUMNS = [
-    "location_id",
+    "locationid",
     "date_local",
     "total_readings",
     "missing_rate_mean",
@@ -111,7 +111,7 @@ def _unit_is_mismatch(parameter: str, original_unit: str) -> bool:
 
 def _expected_readings(
     conformed: pd.DataFrame,
-    location_id: int,
+    locationid: int,
     sensor_id: int,
     parameter: str,
     date_local: str,
@@ -120,7 +120,7 @@ def _expected_readings(
     day = date.fromisoformat(date_local)
     window_start = (day - timedelta(days=TRAILING_CADENCE_DAYS)).isoformat()
     history = conformed[
-        (conformed["location_id"] == location_id)
+        (conformed["locationid"] == locationid)
         & (conformed["sensor_id"] == sensor_id)
         & (conformed["parameter"] == parameter)
         & (conformed["date_local"] >= window_start)
@@ -135,18 +135,18 @@ def _expected_readings(
 
 
 def compute_sensor_day_metrics(conformed: pd.DataFrame) -> pd.DataFrame:
-    """Return one metric row per (location_id, sensor_id, parameter, date_local)."""
+    """Return one metric row per (locationid, sensor_id, parameter, date_local)."""
     if conformed is None or conformed.empty:
         return _empty_sensor_day()
 
     rows: list[dict] = []
-    group_cols = ["location_id", "sensor_id", "parameter", "date_local"]
+    group_cols = ["locationid", "sensor_id", "parameter", "date_local"]
     for keys, part in conformed.groupby(group_cols, sort=False, dropna=False):
-        location_id, sensor_id, parameter, date_local = keys
+        locationid, sensor_id, parameter, date_local = keys
         ordered = part.sort_values("datetime_utc")
         received = len(ordered)
         expected = _expected_readings(
-            conformed, int(location_id), int(sensor_id), str(parameter), str(date_local)
+            conformed, int(locationid), int(sensor_id), str(parameter), str(date_local)
         )
         missing_rate = min(1.0, max(0.0, 1.0 - received / expected))
 
@@ -167,7 +167,7 @@ def compute_sensor_day_metrics(conformed: pd.DataFrame) -> pd.DataFrame:
 
         rows.append(
             {
-                "location_id": int(location_id),
+                "locationid": int(locationid),
                 "sensor_id": int(sensor_id),
                 "parameter": str(parameter),
                 "date_local": str(date_local),
@@ -192,7 +192,7 @@ def load_bronze_manifest(bronze_root: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame(
             columns=[
-                "location_id",
+                "locationid",
                 "day",
                 "archive_key",
                 "status",
@@ -209,8 +209,8 @@ def load_bronze_manifest(bronze_root: Path) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
     frame = pd.DataFrame(rows)
-    if "location_id" in frame.columns:
-        frame["location_id"] = pd.to_numeric(frame["location_id"], errors="coerce").astype("Int64")
+    if "locationid" in frame.columns:
+        frame["locationid"] = pd.to_numeric(frame["locationid"], errors="coerce").astype("Int64")
     return frame
 
 
@@ -222,34 +222,34 @@ def read_bronze_schema(path: Path) -> set[str]:
 
 
 def _schema_drift_by_location(bronze_root: Path) -> dict[tuple[int, str], bool]:
-    """Return {(location_id, date_local): schema_changed} vs previous day."""
+    """Return {(locationid, date_local): schema_changed} vs previous day."""
     flags: dict[tuple[int, str], bool] = {}
     by_location: dict[int, list[tuple[date, Path, set[str]]]] = {}
     for path in sorted(bronze_root.rglob("*.csv.gz")):
         parsed = parse_bronze_filename(path.name)
         if parsed is None:
             continue
-        location_id, day = parsed
-        by_location.setdefault(location_id, []).append((day, path, read_bronze_schema(path)))
+        locationid, day = parsed
+        by_location.setdefault(locationid, []).append((day, path, read_bronze_schema(path)))
 
-    for location_id, entries in by_location.items():
+    for locationid, entries in by_location.items():
         entries.sort(key=lambda item: item[0])
         prev_schema: set[str] | None = None
         for day, _path, schema in entries:
             date_local = day.isoformat()
             changed = prev_schema is not None and schema != prev_schema
-            flags[(location_id, date_local)] = changed
+            flags[(locationid, date_local)] = changed
             prev_schema = schema
     return flags
 
 
-def _file_lateness_hours(location_id: int, date_local: str, manifest: pd.DataFrame) -> float:
+def _file_lateness_hours(locationid: int, date_local: str, manifest: pd.DataFrame) -> float:
     """Hours past the 72h delivery commitment for one location-day."""
     if manifest.empty:
         return 0.0
     day = date.fromisoformat(date_local)
     subset = manifest[
-        (manifest["location_id"] == location_id) & (manifest["day"] == date_local)
+        (manifest["locationid"] == locationid) & (manifest["day"] == date_local)
     ]
     if subset.empty:
         return 0.0
@@ -266,9 +266,9 @@ def _file_lateness_hours(location_id: int, date_local: str, manifest: pd.DataFra
     return max(0.0, lateness)
 
 
-def _cross_sensor_pm25_spread(conformed: pd.DataFrame, location_id: int, date_local: str) -> float:
+def _cross_sensor_pm25_spread(conformed: pd.DataFrame, locationid: int, date_local: str) -> float:
     pm25 = conformed[
-        (conformed["location_id"] == location_id)
+        (conformed["locationid"] == locationid)
         & (conformed["date_local"] == date_local)
         & (conformed["parameter"] == "pm25")
     ].copy()
@@ -287,7 +287,7 @@ def compute_station_day_metrics(
     bronze_root: Path | None = None,
     sensor_metrics: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Return one metric row per (location_id, date_local)."""
+    """Return one metric row per (locationid, date_local)."""
     if conformed is None or conformed.empty:
         return _empty_station_day()
 
@@ -297,45 +297,45 @@ def compute_station_day_metrics(
     manifest = load_bronze_manifest(bronze)
     schema_flags = _schema_drift_by_location(bronze)
 
-    station_days = conformed[["location_id", "date_local"]].drop_duplicates()
+    station_days = conformed[["locationid", "date_local"]].drop_duplicates()
     rows: list[dict] = []
 
     sensors_by_loc_day: dict[tuple[int, str], set[int]] = {}
-    for _, row in conformed.drop_duplicates(subset=["location_id", "date_local", "sensor_id"]).iterrows():
-        key = (int(row["location_id"]), str(row["date_local"]))
+    for _, row in conformed.drop_duplicates(subset=["locationid", "date_local", "sensor_id"]).iterrows():
+        key = (int(row["locationid"]), str(row["date_local"]))
         sensors_by_loc_day.setdefault(key, set()).add(int(row["sensor_id"]))
 
-    sorted_days = station_days.sort_values(["location_id", "date_local"])
+    sorted_days = station_days.sort_values(["locationid", "date_local"])
     prev_sensors: dict[int, set[int]] = {}
 
     for _, station in sorted_days.iterrows():
-        location_id = int(station["location_id"])
+        locationid = int(station["locationid"])
         date_local = str(station["date_local"])
-        key = (location_id, date_local)
+        key = (locationid, date_local)
 
         day_detail = detail[
-            (detail["location_id"] == location_id) & (detail["date_local"] == date_local)
+            (detail["locationid"] == locationid) & (detail["date_local"] == date_local)
         ]
         total_readings = int(day_detail["readings_received"].sum()) if not day_detail.empty else 0
         duplicates = int(day_detail["duplicate_count"].sum()) if not day_detail.empty else 0
         duplicate_rate = duplicates / total_readings if total_readings else 0.0
 
         sensors_today = sensors_by_loc_day.get(key, set())
-        dropout = len(prev_sensors.get(location_id, set()) - sensors_today)
-        prev_sensors[location_id] = sensors_today
+        dropout = len(prev_sensors.get(locationid, set()) - sensors_today)
+        prev_sensors[locationid] = sensors_today
 
         day_obj = date.fromisoformat(date_local)
-        file_present = bronze_path(bronze, location_id, day_obj).exists()
+        file_present = bronze_path(bronze, locationid, day_obj).exists()
 
         rows.append(
             {
-                "location_id": location_id,
+                "locationid": locationid,
                 "date_local": date_local,
                 "total_readings": total_readings,
                 "missing_rate_mean": float(day_detail["missing_rate"].mean())
                 if not day_detail.empty
                 else 0.0,
-                "sensors_expected": len(prev_sensors.get(location_id, set()) | sensors_today),
+                "sensors_expected": len(prev_sensors.get(locationid, set()) | sensors_today),
                 "sensors_received": len(sensors_today),
                 "sensor_dropout_count": dropout,
                 "negative_count_total": int(day_detail["negative_count"].sum())
@@ -350,12 +350,12 @@ def compute_station_day_metrics(
                 "duplicate_rate": duplicate_rate,
                 "schema_changed": bool(schema_flags.get(key, False)),
                 "file_present": file_present,
-                "file_lateness_hours": _file_lateness_hours(location_id, date_local, manifest),
+                "file_lateness_hours": _file_lateness_hours(locationid, date_local, manifest),
                 "unit_mismatch_count": int(day_detail["unit_mismatch"].sum())
                 if not day_detail.empty
                 else 0,
                 "cross_sensor_pm25_spread": _cross_sensor_pm25_spread(
-                    conformed, location_id, date_local
+                    conformed, locationid, date_local
                 ),
             }
         )

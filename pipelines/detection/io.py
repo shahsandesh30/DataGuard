@@ -105,7 +105,7 @@ def read_derived_features(
 #     evaluation signals, not features to train on.
 
 #     Expects `labels` to at minimum carry the join keys
-#     (location_id, parameter, datetime_utc, year) plus the label column,
+#     (locationid, parameter, datetime_utc, year) plus the label column,
 #     so it can be joined back to event_features by anyone downstream.
 #     """
 #     settings = settings or load_settings()

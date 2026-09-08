@@ -20,7 +20,7 @@ from pipelines.config import (
 _SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3}
 
 TRUST_ALERT_COLUMNS = [
-    "location_id",
+    "locationid",
     "date_local",
     "parameter",
     "region_id",
@@ -41,7 +41,7 @@ TRUST_ALERT_COLUMNS = [
 ]
 
 _ALERT_PASS_THROUGH = [
-    "location_id",
+    "locationid",
     "date_local",
     "parameter",
     "region_id",
@@ -72,9 +72,9 @@ def _max_severity(severities: pd.Series) -> str:
 
 
 def aggregate_incidents(quality_incidents: pd.DataFrame) -> pd.DataFrame:
-    """Collapse Layer 1 incidents to one row per (location_id, date_local)."""
+    """Collapse Layer 1 incidents to one row per (locationid, date_local)."""
     columns = [
-        "location_id",
+        "locationid",
         "date_local",
         "has_quality_incident",
         "max_severity",
@@ -85,15 +85,15 @@ def aggregate_incidents(quality_incidents: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=columns)
 
     frame = quality_incidents.copy()
-    frame["location_id"] = frame["location_id"].astype(int)
+    frame["locationid"] = frame["locationid"].astype(int)
     frame["date_local"] = frame["date_local"].astype(str)
 
     rows: list[dict] = []
-    for (location_id, date_local), group in frame.groupby(["location_id", "date_local"], sort=False):
+    for (locationid, date_local), group in frame.groupby(["locationid", "date_local"], sort=False):
         rule_ids = sorted({str(r) for r in group["rule_id"].dropna().unique()})
         rows.append(
             {
-                "location_id": int(location_id),
+                "locationid": int(locationid),
                 "date_local": str(date_local),
                 "has_quality_incident": True,
                 "max_severity": _max_severity(group["severity"]),
@@ -114,12 +114,12 @@ def fuse(quality_incidents: pd.DataFrame, event_alerts: pd.DataFrame) -> pd.Data
         if col not in alerts.columns:
             alerts[col] = None if col != "alert_score" else 0.0
 
-    alerts["location_id"] = alerts["location_id"].astype(int)
+    alerts["locationid"] = alerts["locationid"].astype(int)
     alerts["date_local"] = alerts["date_local"].astype(str)
     alerts["alert_score"] = pd.to_numeric(alerts["alert_score"], errors="coerce").fillna(0.0)
 
     summary = aggregate_incidents(quality_incidents)
-    merged = alerts.merge(summary, on=["location_id", "date_local"], how="left")
+    merged = alerts.merge(summary, on=["locationid", "date_local"], how="left")
 
     if "has_quality_incident" not in merged.columns:
         merged["has_quality_incident"] = False

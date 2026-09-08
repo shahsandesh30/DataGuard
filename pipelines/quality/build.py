@@ -55,8 +55,8 @@ def _write_partitioned(
 
     working = frame.copy()
     working["_year"] = working["date_local"].map(_year_from_date_local)
-    for (location_id, year), part in working.groupby(["location_id", "_year"], sort=False):
-        partition_dir = output / f"locationid={int(location_id)}" / f"year={int(year)}"
+    for (locationid, year), part in working.groupby(["locationid", "_year"], sort=False):
+        partition_dir = output / f"locationid={int(locationid)}" / f"year={int(year)}"
         partition_dir.mkdir(parents=True, exist_ok=True)
         part.drop(columns=["_year"]).to_parquet(
             partition_dir / "part-0.parquet",
@@ -110,13 +110,13 @@ def build_quality(
         rule_keys: set[tuple[int, str]] = set()
         if not rule_incidents.empty:
             rule_keys = {
-                (int(r["location_id"]), str(r["date_local"]))
+                (int(r["locationid"]), str(r["date_local"]))
                 for _, r in rule_incidents.iterrows()
             }
         if not ml_incidents.empty:
             ml_incidents = ml_incidents[
                 ~ml_incidents.apply(
-                    lambda r: (int(r["location_id"]), str(r["date_local"])) in rule_keys,
+                    lambda r: (int(r["locationid"]), str(r["date_local"])) in rule_keys,
                     axis=1,
                 )
             ]
@@ -128,10 +128,10 @@ def build_quality(
             MIN_STATION_DAYS,
         )
 
-    metrics_path = _write_partitioned(station_metrics, gold, "quality_metrics", ["location_id", "date_local"])
-    sensor_path = _write_partitioned(sensor_metrics, gold, "quality_sensor_metrics", ["location_id", "date_local"])
+    metrics_path = _write_partitioned(station_metrics, gold, "quality_metrics", ["locationid", "date_local"])
+    sensor_path = _write_partitioned(sensor_metrics, gold, "quality_sensor_metrics", ["locationid", "date_local"])
     all_incidents = pd.concat([rule_incidents, ml_incidents], ignore_index=True)
-    incidents_path = _write_partitioned(all_incidents, gold, "quality_incidents", ["location_id", "date_local"])
+    incidents_path = _write_partitioned(all_incidents, gold, "quality_incidents", ["locationid", "date_local"])
 
     summary = {
         "sensor_day_rows": int(len(sensor_metrics)),

@@ -69,8 +69,8 @@ def build_detection(
     else:
         alerts = score_events(models, features, weak_label=labels)
 
-    features_path = _write_partitioned(features, gold, "event_features", ["location_id", "date_local"])
-    alerts_path = _write_partitioned(alerts, gold, "event_alerts", ["location_id", "date_local"])
+    features_path = _write_partitioned(features, gold, "event_features", ["locationid", "date_local"])
+    alerts_path = _write_partitioned(alerts, gold, "event_alerts", ["locationid", "date_local"])
 
     summary = {
         "feature_rows": int(len(features)),

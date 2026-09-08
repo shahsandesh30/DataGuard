@@ -13,7 +13,7 @@ from pipelines.config import MISSING_RATE_THRESHOLD, STUCK_RUN_THRESHOLD
 from pipelines.quality.metrics import STATION_DAY_COLUMNS
 
 INCIDENT_COLUMNS = [
-    "location_id",
+    "locationid",
     "date_local",
     "rule_id",
     "incident_type",
@@ -114,7 +114,7 @@ def _snapshot(row: pd.Series) -> str:
 
 
 def apply_quality_rules(station_metrics: pd.DataFrame) -> pd.DataFrame:
-    """Return one incident row per (location_id, date_local, rule_id) that fires."""
+    """Return one incident row per (locationid, date_local, rule_id) that fires."""
     if station_metrics is None or station_metrics.empty:
         return pd.DataFrame(columns=INCIDENT_COLUMNS)
 
@@ -124,7 +124,7 @@ def apply_quality_rules(station_metrics: pd.DataFrame) -> pd.DataFrame:
             if rule["check"](row):
                 incidents.append(
                     {
-                        "location_id": int(row["location_id"]),
+                        "locationid": int(row["locationid"]),
                         "date_local": str(row["date_local"]),
                         "rule_id": rule["rule_id"],
                         "incident_type": rule["incident_type"],

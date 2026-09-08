@@ -46,7 +46,7 @@ SILVER_COLUMNS = [
 
 # Internal working columns used during conform (not written to silver).
 CONFORMED_COLUMNS = [
-    "location_id",
+    "locationid",
     "sensor_id",
     "location_name",
     "datetime_utc",
@@ -76,7 +76,7 @@ COLUMN_ALIASES = {
 }
 
 REQUIRED_AFTER_RENAME = {
-    "location_id",
+    "locationid",
     "location_name",
     "datetime_raw",
     "lat",
@@ -140,10 +140,10 @@ def _parse_datetimes(
     return datetime_utc, datetime_local, date_local
 
 
-def _synthetic_sensor_id(location_id: pd.Series, parameter: pd.Series) -> pd.Series:
+def _synthetic_sensor_id(locationid: pd.Series, parameter: pd.Series) -> pd.Series:
     """Stable placeholder sensor_id when bronze exports omit sensors_id."""
     ids = []
-    for loc, param in zip(location_id, parameter, strict=True):
+    for loc, param in zip(locationid, parameter, strict=True):
         if pd.isna(loc) or pd.isna(param):
             ids.append(pd.NA)
             continue
@@ -158,7 +158,7 @@ def _source_file_name(raw: pd.DataFrame) -> pd.Series:
     return pd.Series(["unknown"] * len(raw), index=raw.index, dtype="string")
 
 
-def _file_location_id(path: Path) -> int | None:
+def _file_locationid(path: Path) -> int | None:
     parsed = parse_bronze_filename(path.name)
     if parsed is not None:
         return parsed[0]
@@ -185,18 +185,18 @@ def conform_measurements(raw: pd.DataFrame) -> pd.DataFrame:
     local_raw = frame["datetime_local_raw"] if "datetime_local_raw" in frame.columns else None
     datetime_utc, datetime_local, date_local = _parse_datetimes(frame["datetime_raw"], local_raw)
     parameter = frame["parameter"].map(canonical_parameter).astype("string")
-    location_id = pd.to_numeric(frame["location_id"], errors="coerce").astype("Int64")
+    locationid = pd.to_numeric(frame["locationid"], errors="coerce").astype("Int64")
     if "sensor_id" in frame.columns:
         sensor_id = pd.to_numeric(frame["sensor_id"], errors="coerce").astype("Int64")
     else:
-        sensor_id = _synthetic_sensor_id(location_id, parameter)
+        sensor_id = _synthetic_sensor_id(locationid, parameter)
     original_unit = frame["unit"].astype("string")
     original_value = pd.to_numeric(frame["value"], errors="coerce")
     value, unit = convert_series(parameter, original_unit, original_value)
 
     conformed = pd.DataFrame(
         {
-            "location_id": location_id,
+            "locationid": locationid,
             "sensor_id": sensor_id,
             "location_name": frame["location_name"].astype("string"),
             "datetime_utc": datetime_utc,
@@ -258,8 +258,8 @@ def _source_key_for(path: Path, bronze_root: Path) -> str:
     parsed = parse_bronze_filename(path.name)
     if parsed is None:
         return path.name
-    location_id, day = parsed
-    return bronze_key(location_id, day)
+    locationid, day = parsed
+    return bronze_key(locationid, day)
 
 
 def read_bronze_file(path: Path, bronze_root: Path | None = None) -> pd.DataFrame:
@@ -268,9 +268,9 @@ def read_bronze_file(path: Path, bronze_root: Path | None = None) -> pd.DataFram
     frame = pd.read_csv(path, compression=compression, encoding="utf-8")
     frame["source_file"] = _source_key_for(path, root)
 
-    file_loc = _file_location_id(path)
-    if file_loc is not None and "location_id" in frame.columns:
-        frame = frame[frame["location_id"] == file_loc]
+    file_loc = _file_locationid(path)
+    if file_loc is not None and "locationid" in frame.columns:
+        frame = frame[frame["locationid"] == file_loc]
     return frame
 
 
@@ -300,19 +300,19 @@ def write_silver_dataset(conformed: pd.DataFrame, silver_root: Path) -> Path:
         return silver_root
 
     export = export.copy()
-    export["_location_id"] = conformed["location_id"].values
+    export["_locationid"] = conformed["locationid"].values
     export["_year"] = pd.to_datetime(export["datetime"]).dt.year.astype("Int64")
 
     ordered = export.sort_values(
-        ["_location_id", "_year", "datetime", "parameter", "sensor_id"],
+        ["_locationid", "_year", "datetime", "parameter", "sensor_id"],
         kind="mergesort",
     )
-    for (location_id, year), part in ordered.groupby(["_location_id", "_year"], sort=False):
-        if pd.isna(location_id) or pd.isna(year):
+    for (locationid, year), part in ordered.groupby(["_locationid", "_year"], sort=False):
+        if pd.isna(locationid) or pd.isna(year):
             continue
-        partition_dir = silver_root / f"locationid={int(location_id)}" / f"year={int(year)}"
+        partition_dir = silver_root / f"locationid={int(locationid)}" / f"year={int(year)}"
         partition_dir.mkdir(parents=True, exist_ok=True)
-        out = part.drop(columns=["_location_id", "_year"]).drop_duplicates(
+        out = part.drop(columns=["_locationid", "_year"]).drop_duplicates(
             subset=["sensor_id", "datetime", "parameter"], keep="last"
         )
         out.to_parquet(
@@ -360,7 +360,7 @@ def build_silver(
     combined = pd.concat(frames, ignore_index=True) if frames else _empty_conformed()
     if not combined.empty:
         combined = combined.drop_duplicates(
-            subset=["location_id", "sensor_id", "datetime_utc", "parameter"],
+            subset=["locationid", "sensor_id", "datetime_utc", "parameter"],
             keep="last",
         )
     output_path = write_silver_dataset(combined, silver_dir)
@@ -383,7 +383,7 @@ def build_silver(
         if not combined.empty
         else [],
         "units": sorted(combined["unit"].dropna().unique().tolist()) if not combined.empty else [],
-        "locations": sorted(int(v) for v in combined["location_id"].dropna().unique().tolist())
+        "locations": sorted(int(v) for v in combined["locationid"].dropna().unique().tolist())
         if not combined.empty
         else [],
         "years": sorted(int(v) for v in pd.to_datetime(export["datetime"]).dt.year.unique().tolist())
@@ -422,6 +422,6 @@ def read_conformed(bronze_root: Path | None = None) -> pd.DataFrame:
     if combined.empty:
         return combined
     return combined.drop_duplicates(
-        subset=["location_id", "sensor_id", "datetime_utc", "parameter"],
+        subset=["locationid", "sensor_id", "datetime_utc", "parameter"],
         keep="last",
     )

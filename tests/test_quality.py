@@ -15,7 +15,7 @@ def _conformed_frame(rows: list[dict]) -> pd.DataFrame:
 
 def _base_row(**overrides) -> dict:
     row = {
-        "location_id": 100,
+        "locationid": 100,
         "sensor_id": 1,
         "location_name": "Test-100",
         "datetime_utc": pd.Timestamp("2026-01-01 01:00:00", tz="UTC"),

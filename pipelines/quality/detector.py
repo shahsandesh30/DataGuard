@@ -38,7 +38,7 @@ def fit_quality_model(
     if metrics is None or metrics.empty:
         return None
 
-    eligible = metrics.groupby("location_id").size()
+    eligible = metrics.groupby("locationid").size()
     if eligible.max() < MIN_STATION_DAYS:
         return None
 
@@ -104,7 +104,7 @@ def model_incidents(scored_metrics: pd.DataFrame) -> pd.DataFrame:
     for _, row in flagged.iterrows():
         rows.append(
             {
-                "location_id": int(row["location_id"]),
+                "locationid": int(row["locationid"]),
                 "date_local": str(row["date_local"]),
                 "rule_id": "M1",
                 "incident_type": "model_flagged",
