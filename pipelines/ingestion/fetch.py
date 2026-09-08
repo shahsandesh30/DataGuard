@@ -35,7 +35,7 @@ Downloader = Callable[[str, str, Path], int]
 
 @dataclass
 class FetchResult:
-    location_id: int
+    locationid: int
     day: date
     archive_key: str
     status: str
@@ -45,35 +45,35 @@ class FetchResult:
     error: str | None = None
 
 
-def archive_key(location_id: int, day: date) -> str:
+def archive_key(locationid: int, day: date) -> str:
     """Return the OpenAQ S3 archive object key for one location-day."""
     return (
-        f"records/csv.gz/locationid={location_id}"
+        f"records/csv.gz/locationid={locationid}"
         f"/year={day.year}/month={day.month:02d}"
-        f"/location-{location_id}-{day.strftime('%Y%m%d')}.csv.gz"
+        f"/location-{locationid}-{day.strftime('%Y%m%d')}.csv.gz"
     )
 
 
-def bronze_key(location_id: int, day: date) -> str:
+def bronze_key(locationid: int, day: date) -> str:
     """Return the relative local bronze path for one location-day."""
     return (
-        f"locationid={location_id}/year={day.year}"
-        f"/location-{location_id}-{day.strftime('%Y%m%d')}.csv.gz"
+        f"locationid={locationid}/year={day.year}"
+        f"/location-{locationid}-{day.strftime('%Y%m%d')}.csv.gz"
     )
 
 
-def bronze_path(bronze_root: Path, location_id: int, day: date) -> Path:
+def bronze_path(bronze_root: Path, locationid: int, day: date) -> Path:
     """Local bronze path under ``bronze_root``."""
-    return bronze_root / bronze_key(location_id, day)
+    return bronze_root / bronze_key(locationid, day)
 
 
 def parse_bronze_filename(name: str) -> tuple[int, date] | None:
     match = FILENAME_RE.search(name)
     if not match:
         return None
-    location_id = int(match.group(1))
+    locationid = int(match.group(1))
     day = datetime.strptime(match.group(2), "%Y%m%d").date()
-    return location_id, day
+    return locationid, day
 
 
 def unsigned_s3_client(region: str = OPENAQ_ARCHIVE_REGION):
@@ -119,7 +119,7 @@ def _append_manifest(bronze_root: Path, result: FetchResult) -> None:
 
 
 def fetch_location_day(
-    location_id: int,
+    locationid: int,
     day: date,
     *,
     bronze_root: Path | None = None,
@@ -130,13 +130,13 @@ def fetch_location_day(
     """Copy one location-day file from the OpenAQ archive to local bronze."""
     settings = load_settings()
     root = Path(bronze_root or settings.bronze_root)
-    key = archive_key(location_id, day)
-    dest = bronze_path(root, location_id, day)
+    key = archive_key(locationid, day)
+    dest = bronze_path(root, locationid, day)
     arrived_at = _utc_now()
 
     if dest.exists() and not force:
         return FetchResult(
-            location_id=location_id,
+            locationid=locationid,
             day=day,
             archive_key=key,
             status="skipped",
@@ -155,7 +155,7 @@ def fetch_location_day(
     except FileNotFoundError:
         logger.info("Missing archive object (completeness gap): %s", key)
         result = FetchResult(
-            location_id=location_id,
+            locationid=locationid,
             day=day,
             archive_key=key,
             status="missing",
@@ -166,7 +166,7 @@ def fetch_location_day(
     except Exception as exc:  # noqa: BLE001 — record and continue the range
         logger.warning("Failed to fetch %s: %s", key, exc)
         result = FetchResult(
-            location_id=location_id,
+            locationid=locationid,
             day=day,
             archive_key=key,
             status="error",
@@ -177,7 +177,7 @@ def fetch_location_day(
         return result
 
     result = FetchResult(
-        location_id=location_id,
+        locationid=locationid,
         day=day,
         archive_key=key,
         status="copied",
@@ -200,7 +200,7 @@ def iter_days(start: date, end: date) -> Iterator[date]:
 
 
 def fetch_range(
-    location_ids: list[int],
+    locationids: list[int],
     start: date,
     end: date,
     *,
@@ -212,11 +212,11 @@ def fetch_range(
     settings = load_settings()
     root = Path(bronze_root or settings.bronze_root)
     results: list[FetchResult] = []
-    for location_id in location_ids:
+    for locationid in locationids:
         for day in iter_days(start, end):
             results.append(
                 fetch_location_day(
-                    location_id,
+                    locationid,
                     day,
                     bronze_root=root,
                     force=force,
@@ -244,8 +244,8 @@ def adopt_flat_bronze(bronze_root: Path | None = None) -> list[FetchResult]:
         parsed = parse_bronze_filename(path.name)
         if parsed is None:
             continue
-        location_id, day = parsed
-        dest = bronze_path(root, location_id, day)
+        locationid, day = parsed
+        dest = bronze_path(root, locationid, day)
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists():
             if dest.resolve() != path.resolve():
@@ -254,9 +254,9 @@ def adopt_flat_bronze(bronze_root: Path | None = None) -> list[FetchResult]:
         shutil.move(str(path), str(dest))
         results.append(
             FetchResult(
-                location_id=location_id,
+                locationid=locationid,
                 day=day,
-                archive_key=archive_key(location_id, day),
+                archive_key=archive_key(locationid, day),
                 status="adopted",
                 local_path=str(dest),
                 bytes=dest.stat().st_size,
@@ -271,8 +271,8 @@ def adopt_flat_bronze(bronze_root: Path | None = None) -> list[FetchResult]:
         parsed = parse_bronze_filename(path.name)
         if parsed is None:
             continue
-        location_id, day = parsed
-        dest = bronze_path(root, location_id, day)
+        locationid, day = parsed
+        dest = bronze_path(root, locationid, day)
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists():
             if dest.resolve() != path.resolve():
@@ -280,9 +280,9 @@ def adopt_flat_bronze(bronze_root: Path | None = None) -> list[FetchResult]:
             continue
         shutil.move(str(path), str(dest))
         result = FetchResult(
-            location_id=location_id,
+            locationid=locationid,
             day=day,
-            archive_key=archive_key(location_id, day),
+            archive_key=archive_key(locationid, day),
             status="adopted",
             local_path=str(dest),
             bytes=dest.stat().st_size,

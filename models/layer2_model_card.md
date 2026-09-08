@@ -3,7 +3,7 @@
 ## Purpose
 
 Detect genuine pollution events (smoke, dust, industrial spikes) at
-`(location_id, date_local, parameter)` grain. Layer 2 is **not** data-health
+`(locationid, date_local, parameter)` grain. Layer 2 is **not** data-health
 detection — stuck sensors, missing files, and schema drift belong to Layer 1.
 
 ## Status

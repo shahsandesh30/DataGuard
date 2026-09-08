@@ -34,7 +34,7 @@ DISPLAY_COLS = [
     "status",
     "trust_score",
     "rank",
-    "location_id",
+    "locationid",
     "date_local",
     "parameter",
     "alert_score",
@@ -169,7 +169,7 @@ with tab_quality:
         c1, c2, c3 = st.columns(3)
         c1.metric("Station-days", len(metrics_view))
         c2.metric("Incidents", len(incidents_view))
-        c3.metric("Locations", metrics_view["location_id"].nunique())
+        c3.metric("Locations", metrics_view["locationid"].nunique())
 
         st.subheader("Station-day metrics")
         st.dataframe(metrics_view, use_container_width=True)
@@ -179,7 +179,7 @@ with tab_quality:
             st.dataframe(
                 incidents_view[
                     [
-                        "location_id",
+                        "locationid",
                         "date_local",
                         "rule_id",
                         "incident_type",
@@ -237,7 +237,7 @@ with tab_map:
             view = pdk.ViewState(latitude=mid_lat, longitude=mid_lon, zoom=9)
             tooltip = {
                 "html": (
-                    "<b>{location_name}</b> ({location_id})<br/>"
+                    "<b>{location_name}</b> ({locationid})<br/>"
                     "status: {status}<br/>"
                     "date: {date_local}<br/>"
                     "trust: {trust_score}<br/>"
@@ -257,7 +257,7 @@ with tab_map:
                 )
 
             table_cols = [
-                "location_id",
+                "locationid",
                 "location_name",
                 "lat",
                 "lon",

@@ -13,10 +13,10 @@ def _conformed_frame(rows: list[dict]) -> pd.DataFrame:
 
 def _base_row(**overrides) -> dict:
     row = {
-        "location_id": 1544061,
+        "locationid": 1544061,
         "sensor_id": 1,
         "location_name": "Anzac",
-        "datetime_utc": pd.Timestamp("2026-01-01 01:00:00", tz="UTC"),
+        "datetime": pd.Timestamp("2026-01-01 01:00:00", tz="UTC"),
         "datetime_local": pd.Timestamp("2026-01-01 12:00:00"),
         "date_local": "2026-01-01",
         "lat": -33.0,
@@ -32,14 +32,14 @@ def _base_row(**overrides) -> dict:
     return row
 
 
-def _baseline_day(location_id: int, date_local: str, hour_offset: int, value: float) -> list[dict]:
+def _baseline_day(locationid: int, date_local: str, hour_offset: int, value: float) -> list[dict]:
     rows = []
     for h in range(24):
         rows.append(
             _base_row(
-                location_id=location_id,
+                locationid=locationid,
                 date_local=date_local,
-                datetime_utc=pd.Timestamp(f"{date_local} {h:02d}:00:00", tz="UTC") + pd.Timedelta(hours=hour_offset),
+                datetime=pd.Timestamp(f"{date_local} {h:02d}:00:00", tz="UTC") + pd.Timedelta(hours=hour_offset),
                 datetime_local=pd.Timestamp(f"{date_local} {h:02d}:00:00"),
                 parameter="pm25",
                 value=value + (h % 3) * 0.2,
@@ -60,9 +60,9 @@ def _build_spike_fixture() -> pd.DataFrame:
     for h in range(24):
         rows.append(
             _base_row(
-                location_id=1544061,
+                locationid=1544061,
                 date_local=spike_day,
-                datetime_utc=pd.Timestamp(f"{spike_day} {h:02d}:00:00", tz="UTC"),
+                datetime=pd.Timestamp(f"{spike_day} {h:02d}:00:00", tz="UTC"),
                 datetime_local=pd.Timestamp(f"{spike_day} {h:02d}:00:00"),
                 parameter="pm25",
                 value=80.0 if h >= 10 else 12.0,
@@ -75,12 +75,12 @@ def test_spike_day_has_high_z_score_and_roc():
     conformed = _build_spike_fixture()
     features = build_event_features(conformed)
     spike = features[
-        (features["location_id"] == 1544061)
+        (features["locationid"] == 1544061)
         & (features["date_local"] == "2026-01-08")
         & (features["parameter"] == "pm25")
     ]
     baseline = features[
-        (features["location_id"] == 1544061)
+        (features["locationid"] == 1544061)
         & (features["date_local"] == "2026-01-07")
         & (features["parameter"] == "pm25")
     ]
@@ -95,10 +95,10 @@ def test_flat_baseline_days_have_low_alert_scores():
     models = fit_ensemble(features)
     alerts = score_events(models, features, weak_label=weak_labels(features, conformed))
     baseline_alerts = alerts[
-        (alerts["location_id"] == 1601414) & (alerts["date_local"] == "2026-01-03")
+        (alerts["locationid"] == 1601414) & (alerts["date_local"] == "2026-01-03")
     ]
     spike_alerts = alerts[
-        (alerts["location_id"] == 1544061) & (alerts["date_local"] == "2026-01-08")
+        (alerts["locationid"] == 1544061) & (alerts["date_local"] == "2026-01-08")
     ]
     if not baseline_alerts.empty and not spike_alerts.empty:
         assert spike_alerts.iloc[0]["alert_score"] >= baseline_alerts.iloc[0]["alert_score"]
@@ -116,12 +116,12 @@ def test_single_station_spike_has_high_spatial_isolation():
     rows.extend(_baseline_day(1544061, spike_day, 6, 90.0))
     features = build_event_features(_conformed_frame(rows))
     isolated = features[
-        (features["location_id"] == 1544061)
+        (features["locationid"] == 1544061)
         & (features["date_local"] == spike_day)
         & (features["parameter"] == "pm25")
     ]
     peer = features[
-        (features["location_id"] == 1601414)
+        (features["locationid"] == 1601414)
         & (features["date_local"] == spike_day)
         & (features["parameter"] == "pm25")
     ]
@@ -155,9 +155,9 @@ def test_build_detection_writes_layer2_partitions(tmp_path, monkeypatch):
             rows.extend(
                 [
                     _base_row(
-                        location_id=loc,
+                        locationid=loc,
                         date_local=date_local,
-                        datetime_utc=pd.Timestamp(f"{date_local} {h:02d}:00:00", tz="UTC"),
+                        datetime=pd.Timestamp(f"{date_local} {h:02d}:00:00", tz="UTC"),
                         datetime_local=pd.Timestamp(f"{date_local} {h:02d}:00:00"),
                         parameter="pm10",
                         value=20.0,

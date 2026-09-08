@@ -15,7 +15,7 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
-from pipelines.config import DEFAULT_LOCATION_IDS, load_settings
+from pipelines.config import DEFAULT_locationidS, load_settings
 from pipelines.conformance.conform import build_silver
 from pipelines.detection.build import build_detection
 from pipelines.fusion.build import build_fusion
@@ -52,7 +52,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     sub = parser.add_subparsers(dest="command", required=True)
 
     ingest = sub.add_parser("ingest", help="Fetch OpenAQ archive files into bronze")
-    ingest.add_argument("--locations", type=int, nargs="+", default=DEFAULT_LOCATION_IDS)
+    ingest.add_argument("--locations", type=int, nargs="+", default=DEFAULT_locationidS)
     ingest.add_argument("--start", type=date.fromisoformat, required=True)
     ingest.add_argument("--end", type=date.fromisoformat, required=True)
     ingest.add_argument("--force", action="store_true", help="Re-download files already in bronze")
@@ -74,7 +74,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "run",
         help="Adopt/fetch bronze, build silver, Layer 1 quality, Layer 2 detection, fusion",
     )
-    run.add_argument("--locations", type=int, nargs="+", default=DEFAULT_LOCATION_IDS)
+    run.add_argument("--locations", type=int, nargs="+", default=DEFAULT_locationidS)
     run.add_argument("--start", type=date.fromisoformat, required=True)
     run.add_argument("--end", type=date.fromisoformat, required=True)
     run.add_argument("--force", action="store_true")
