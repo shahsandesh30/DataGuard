@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import joblib
 from sklearn.cluster import DBSCAN
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
@@ -27,6 +30,7 @@ EVENT_ALERT_COLUMNS = [
 ]
 
 TOP_K_ALERTS_PER_DAY = 10
+MODEL_NAME = "layer2_if_lof_dbscan"
 
 
 def _feature_matrix(features: pd.DataFrame) -> pd.DataFrame:
@@ -57,6 +61,8 @@ def fit_ensemble(
     """Fit IF, LOF, and DBSCAN on scaled feature rows."""
     if features is None or features.empty:
         return None
+    if len(features) < 3:
+        raise ValueError("At least 3 feature rows are required to fit the detector ensemble.")
 
     matrix = _feature_matrix(features)
     scaler = StandardScaler()
@@ -72,9 +78,9 @@ def fit_ensemble(
     lof = LocalOutlierFactor(
         n_neighbors=min(5, len(scaled) - 1),
         contamination=contamination,
-        novelty=False,
+        novelty=True,
     )
-    lof_labels = lof.fit_predict(scaled)
+    lof.fit(scaled)
 
     dbscan = DBSCAN(eps=1.5, min_samples=max(2, len(scaled) // 10))
     dbscan_labels = dbscan.fit_predict(scaled)
@@ -82,11 +88,25 @@ def fit_ensemble(
     return {
         "scaler": scaler,
         "isolation_forest": iso,
-        "lof_labels": lof_labels,
-        "lof_scores": lof.negative_outlier_factor_,
+        "lof": lof,
         "dbscan_labels": dbscan_labels,
         "feature_columns": FEATURE_MODEL_COLUMNS,
     }
+
+
+def save_ensemble(models: dict, path) -> None:
+    """Persist the fitted ensemble and its feature contract."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(models, path)
+
+
+def load_ensemble(path) -> dict:
+    """Load an ensemble created by :func:`save_ensemble`."""
+    models = joblib.load(path)
+    if not isinstance(models, dict) or models.get("feature_columns") != FEATURE_MODEL_COLUMNS:
+        raise ValueError(f"Invalid or incompatible detection ensemble: {path}")
+    return models
 
 
 def score_events(
@@ -112,13 +132,17 @@ def score_events(
     if_preds = iso.predict(scaled)
     if_scores = _normalize_scores(iso.score_samples(scaled))
 
-    lof_flags = models["lof_labels"] == -1
-    lof_scores = _normalize_scores(models["lof_scores"])
+    lof = models["lof"]
+    lof_flags = lof.predict(scaled) == -1
+    lof_scores = _normalize_scores(lof.decision_function(scaled))
 
-    dbscan_flags = models["dbscan_labels"] == -1
+    if len(models["dbscan_labels"]) == len(features):
+        dbscan_flags = models["dbscan_labels"] == -1
+    else:
+        dbscan_flags = np.zeros(len(features), dtype=bool)
     dbscan_scores = dbscan_flags.astype(float)
 
-    agreement = if_preds.astype(int) + lof_flags.astype(int) + dbscan_flags.astype(int)
+    agreement = (if_preds == -1).astype(int) + lof_flags.astype(int) + dbscan_flags.astype(int)
     combined = agreement / 3.0 + (if_scores + lof_scores + dbscan_scores) / 3.0
 
     scored = features.copy()

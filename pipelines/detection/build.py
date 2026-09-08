@@ -11,7 +11,12 @@ import pandas as pd
 
 from pipelines.config import MIN_EVENT_ROWS, load_settings
 from pipelines.conformance.conform import read_conformed
-from pipelines.detection.ensemble import EVENT_ALERT_COLUMNS, fit_ensemble, score_events
+from pipelines.detection.ensemble import (
+    EVENT_ALERT_COLUMNS,
+    fit_ensemble,
+    save_ensemble,
+    score_events,
+)
 from pipelines.detection.features import build_event_features, weak_labels
 from pipelines.quality.build import _write_partitioned
 
@@ -47,13 +52,16 @@ def read_event_alerts(gold_root: Path | None = None) -> pd.DataFrame:
 def build_detection(
     bronze_root: Path | None = None,
     gold_root: Path | None = None,
+    *,
+    conformed: pd.DataFrame | None = None,
+    models_dir: Path | None = None,
 ) -> DetectionBuildResult:
-    """Compute Layer 2 features and ranked alerts, write to gold."""
+    """Run the canonical Layer 2 flow: conformed data -> features -> alerts."""
     settings = load_settings()
     bronze = Path(bronze_root or settings.bronze_root)
     gold = Path(gold_root or settings.gold_root) / "layer2"
 
-    conformed = read_conformed(bronze)
+    conformed = conformed if conformed is not None else read_conformed(bronze)
     features = build_event_features(conformed)
     labels = weak_labels(features, conformed)
 
@@ -67,6 +75,10 @@ def build_detection(
         )
         alerts = pd.DataFrame(columns=EVENT_ALERT_COLUMNS)
     else:
+        model_path = Path(models_dir or Path(gold_root or settings.gold_root) / "models") / (
+            "layer2_ensemble.joblib"
+        )
+        save_ensemble(models, model_path)
         alerts = score_events(models, features, weak_label=labels)
 
     features_path = _write_partitioned(features, gold, "event_features", ["locationid", "date_local"])
@@ -76,6 +88,7 @@ def build_detection(
         "feature_rows": int(len(features)),
         "alert_rows": int(len(alerts)),
         "ensemble_trained": ensemble_trained,
+        "model_path": str(model_path) if ensemble_trained else None,
         "features_path": str(features_path),
         "alerts_path": str(alerts_path),
     }

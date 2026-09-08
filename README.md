@@ -149,6 +149,22 @@ python -m pipelines run --locations 1544061 1601414 2455394 6430870 --start 2026
 
 See `notebooks/01_bronze_profiling.ipynb`, `notebooks/02_silver_conformance.ipynb`, `notebooks/03_quality_metrics_eda.ipynb`, `notebooks/04_detection_features.ipynb`, `notebooks/05_fusion_trust.ipynb`, `notebooks/06_dashboard_map.ipynb`, and `notebooks/data_test.ipynb`.
 
+### Detection features and scores
+
+The detection package can consume the local silver Parquet dataset or query the
+AWS Glue/Athena silver table. It writes hourly features, fitted Isolation
+Forest artifacts, and scored rows:
+
+```bash
+python -m pipelines.detection \
+  --bronze-root data/bronze --gold-root data/gold
+```
+
+The same canonical flow is available from Python through
+`pipelines.detection.build_detection`. Local outputs are written under
+`data/gold/layer2/event_features`, `data/gold/layer2/event_alerts`, and
+`data/gold/models/layer2_ensemble.joblib`.
+
 ## Dashboard
 
 ```bash

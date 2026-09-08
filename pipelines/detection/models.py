@@ -1,5 +1,8 @@
 from __future__ import annotations
- 
+
+from pathlib import Path
+
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
@@ -35,6 +38,34 @@ IF_PARAMS = dict(
     random_state=42,
     n_jobs=-1,
 )
+
+
+def save_model(
+    model: IsolationForest,
+    path: Path,
+    *,
+    feature_columns: list[str] | None = None,
+) -> Path:
+    """Persist a fitted parameter model for reproducible re-scoring."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(
+        {
+            "model": model,
+            "feature_columns": feature_columns or MODEL_FEATURES,
+            "parameters": IF_PARAMS,
+        },
+        path,
+    )
+    return path
+
+
+def load_model(path: Path) -> IsolationForest:
+    """Load a model written by :func:`save_model`."""
+    artifact = joblib.load(path)
+    if not isinstance(artifact, dict) or "model" not in artifact:
+        raise ValueError(f"Invalid detection model artifact: {path}")
+    return artifact["model"]
  
  
 def _select_model_frame(df: pd.DataFrame, parameter: str) -> pd.DataFrame:
@@ -70,7 +101,7 @@ def fit_score_isolation_forest(
     if subset.empty:
         print(f"[{parameter}] no rows left after dropping missing values — skipping")
         return subset
- 
+
     X = subset[feature_cols].to_numpy()
  
     model = IsolationForest(**IF_PARAMS)
@@ -83,6 +114,29 @@ def fit_score_isolation_forest(
     subset["is_anomaly"] = model.predict(X) == -1  # sklearn: -1 = outlier, 1 = inlier
     subset["model_name"] = "isolation_forest_baseline"
  
+    return subset
+
+
+def fit_score_and_save(
+    df: pd.DataFrame,
+    parameter: str,
+    model_dir: Path,
+) -> pd.DataFrame:
+    """Fit one model, score its rows, and save the fitted estimator."""
+    subset, feature_cols = _select_model_frame(df, parameter)
+    if subset.empty:
+        return subset
+    model = IsolationForest(**IF_PARAMS)
+    X = subset[feature_cols].to_numpy()
+    model.fit(X)
+    subset["anomaly_score"] = -model.decision_function(X)
+    subset["is_anomaly"] = model.predict(X) == -1
+    subset["model_name"] = "isolation_forest_baseline"
+    save_model(
+        model,
+        Path(model_dir) / f"{parameter}_isolation_forest.joblib",
+        feature_columns=feature_cols,
+    )
     return subset
  
  
