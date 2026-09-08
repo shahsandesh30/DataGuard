@@ -55,7 +55,7 @@ def test_conform_measurements_renames_parses_and_keeps_negatives():
     )
     conformed = conform_measurements(raw)
     assert list(conformed.columns) == CONFORMED_COLUMNS
-    assert conformed["datetime_utc"].dt.tz is not None
+    assert conformed["datetime"].dt.tz is not None
     assert set(conformed["date_local"]) == {"2023-01-01"}
     assert set(conformed["unit"]) == {"µg/m³"}
 

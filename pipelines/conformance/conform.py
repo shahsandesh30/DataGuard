@@ -49,7 +49,7 @@ CONFORMED_COLUMNS = [
     "locationid",
     "sensor_id",
     "location_name",
-    "datetime_utc",
+    "datetime",
     "datetime_local",
     "date_local",
     "lat",
@@ -133,11 +133,11 @@ def _parse_datetimes(
     utc_series: pd.Series,
     local_series: pd.Series | None = None,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
-    datetime_utc = pd.to_datetime(utc_series, utc=True, errors="coerce")
+    datetime = pd.to_datetime(utc_series, utc=True, errors="coerce")
     local_source = local_series if local_series is not None else utc_series
     datetime_local = _local_datetime(local_source)
     date_local = _date_local_from_series(local_source)
-    return datetime_utc, datetime_local, date_local
+    return datetime, datetime_local, date_local
 
 
 def _synthetic_sensor_id(locationid: pd.Series, parameter: pd.Series) -> pd.Series:
@@ -183,7 +183,7 @@ def conform_measurements(raw: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"Bronze file missing required columns: {sorted(missing)}")
 
     local_raw = frame["datetime_local_raw"] if "datetime_local_raw" in frame.columns else None
-    datetime_utc, datetime_local, date_local = _parse_datetimes(frame["datetime_raw"], local_raw)
+    datetime, datetime_local, date_local = _parse_datetimes(frame["datetime_raw"], local_raw)
     parameter = frame["parameter"].map(canonical_parameter).astype("string")
     locationid = pd.to_numeric(frame["locationid"], errors="coerce").astype("Int64")
     if "sensor_id" in frame.columns:
@@ -199,7 +199,7 @@ def conform_measurements(raw: pd.DataFrame) -> pd.DataFrame:
             "locationid": locationid,
             "sensor_id": sensor_id,
             "location_name": frame["location_name"].astype("string"),
-            "datetime_utc": datetime_utc,
+            "datetime": datetime,
             "datetime_local": datetime_local,
             "date_local": date_local,
             "lat": pd.to_numeric(frame["lat"], errors="coerce"),
@@ -360,7 +360,7 @@ def build_silver(
     combined = pd.concat(frames, ignore_index=True) if frames else _empty_conformed()
     if not combined.empty:
         combined = combined.drop_duplicates(
-            subset=["locationid", "sensor_id", "datetime_utc", "parameter"],
+            subset=["locationid", "sensor_id", "datetime", "parameter"],
             keep="last",
         )
     output_path = write_silver_dataset(combined, silver_dir)
@@ -422,6 +422,6 @@ def read_conformed(bronze_root: Path | None = None) -> pd.DataFrame:
     if combined.empty:
         return combined
     return combined.drop_duplicates(
-        subset=["locationid", "sensor_id", "datetime_utc", "parameter"],
+        subset=["locationid", "sensor_id", "datetime", "parameter"],
         keep="last",
     )

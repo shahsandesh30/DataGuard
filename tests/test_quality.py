@@ -18,7 +18,7 @@ def _base_row(**overrides) -> dict:
         "locationid": 100,
         "sensor_id": 1,
         "location_name": "Test-100",
-        "datetime_utc": pd.Timestamp("2026-01-01 01:00:00", tz="UTC"),
+        "datetime": pd.Timestamp("2026-01-01 01:00:00", tz="UTC"),
         "datetime_local": pd.Timestamp("2026-01-01 12:00:00"),
         "date_local": "2026-01-01",
         "lat": -33.0,
@@ -41,14 +41,14 @@ def test_max_stuck_run_detects_consecutive_identical_values():
 def test_sensor_day_metrics_flags_negative_and_stuck():
     stuck_rows = [
         _base_row(
-            datetime_utc=pd.Timestamp(f"2026-01-01 {h:02d}:00:00", tz="UTC"),
+            datetime=pd.Timestamp(f"2026-01-01 {h:02d}:00:00", tz="UTC"),
             datetime_local=pd.Timestamp(f"2026-01-01 {h+11:02d}:00:00"),
             value=5.0,
         )
         for h in range(8)
     ]
     neg_row = _base_row(
-        datetime_utc=pd.Timestamp("2026-01-01 09:00:00", tz="UTC"),
+        datetime=pd.Timestamp("2026-01-01 09:00:00", tz="UTC"),
         datetime_local=pd.Timestamp("2026-01-01 20:00:00"),
         value=-0.5,
     )
@@ -63,7 +63,7 @@ def test_sensor_day_metrics_flags_negative_and_stuck():
 def test_station_day_rules_fire_for_negative_and_stuck():
     stuck_rows = [
         _base_row(
-            datetime_utc=pd.Timestamp(f"2026-01-01 {h:02d}:00:00", tz="UTC"),
+            datetime=pd.Timestamp(f"2026-01-01 {h:02d}:00:00", tz="UTC"),
             datetime_local=pd.Timestamp(f"2026-01-01 {h+11:02d}:00:00"),
             value=5.0 if h < 7 else -1.0,
         )
@@ -93,7 +93,7 @@ def test_duplicate_readings_trigger_uniqueness_rule():
 def test_missing_hours_raise_completeness_rule():
     rows = [
         _base_row(
-            datetime_utc=pd.Timestamp(f"2026-01-01 {h:02d}:00:00", tz="UTC"),
+            datetime=pd.Timestamp(f"2026-01-01 {h:02d}:00:00", tz="UTC"),
             datetime_local=pd.Timestamp(f"2026-01-01 {h+11:02d}:00:00"),
         )
         for h in range(4)

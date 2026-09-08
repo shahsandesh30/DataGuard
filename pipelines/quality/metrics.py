@@ -143,14 +143,14 @@ def compute_sensor_day_metrics(conformed: pd.DataFrame) -> pd.DataFrame:
     group_cols = ["locationid", "sensor_id", "parameter", "date_local"]
     for keys, part in conformed.groupby(group_cols, sort=False, dropna=False):
         locationid, sensor_id, parameter, date_local = keys
-        ordered = part.sort_values("datetime_utc")
+        ordered = part.sort_values("datetime")
         received = len(ordered)
         expected = _expected_readings(
             conformed, int(locationid), int(sensor_id), str(parameter), str(date_local)
         )
         missing_rate = min(1.0, max(0.0, 1.0 - received / expected))
 
-        dup_mask = ordered.duplicated(subset=["sensor_id", "datetime_utc", "parameter"], keep="first")
+        dup_mask = ordered.duplicated(subset=["sensor_id", "datetime", "parameter"], keep="first")
         duplicate_count = int(dup_mask.sum())
 
         values = ordered["value"]
@@ -274,7 +274,7 @@ def _cross_sensor_pm25_spread(conformed: pd.DataFrame, locationid: int, date_loc
     ].copy()
     if pm25.empty:
         return 0.0
-    pm25["hour"] = pd.to_datetime(pm25["datetime_utc"], utc=True).dt.floor("h")
+    pm25["hour"] = pd.to_datetime(pm25["datetime"], utc=True).dt.floor("h")
     spreads = []
     for _, group in pm25.groupby("hour"):
         if group["sensor_id"].nunique() > 1:

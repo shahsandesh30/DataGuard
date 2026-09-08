@@ -16,7 +16,7 @@ def _base_row(**overrides) -> dict:
         "locationid": 1544061,
         "sensor_id": 1,
         "location_name": "Anzac",
-        "datetime_utc": pd.Timestamp("2026-01-01 01:00:00", tz="UTC"),
+        "datetime": pd.Timestamp("2026-01-01 01:00:00", tz="UTC"),
         "datetime_local": pd.Timestamp("2026-01-01 12:00:00"),
         "date_local": "2026-01-01",
         "lat": -33.0,
@@ -39,7 +39,7 @@ def _baseline_day(locationid: int, date_local: str, hour_offset: int, value: flo
             _base_row(
                 locationid=locationid,
                 date_local=date_local,
-                datetime_utc=pd.Timestamp(f"{date_local} {h:02d}:00:00", tz="UTC") + pd.Timedelta(hours=hour_offset),
+                datetime=pd.Timestamp(f"{date_local} {h:02d}:00:00", tz="UTC") + pd.Timedelta(hours=hour_offset),
                 datetime_local=pd.Timestamp(f"{date_local} {h:02d}:00:00"),
                 parameter="pm25",
                 value=value + (h % 3) * 0.2,
@@ -62,7 +62,7 @@ def _build_spike_fixture() -> pd.DataFrame:
             _base_row(
                 locationid=1544061,
                 date_local=spike_day,
-                datetime_utc=pd.Timestamp(f"{spike_day} {h:02d}:00:00", tz="UTC"),
+                datetime=pd.Timestamp(f"{spike_day} {h:02d}:00:00", tz="UTC"),
                 datetime_local=pd.Timestamp(f"{spike_day} {h:02d}:00:00"),
                 parameter="pm25",
                 value=80.0 if h >= 10 else 12.0,
@@ -157,7 +157,7 @@ def test_build_detection_writes_layer2_partitions(tmp_path, monkeypatch):
                     _base_row(
                         locationid=loc,
                         date_local=date_local,
-                        datetime_utc=pd.Timestamp(f"{date_local} {h:02d}:00:00", tz="UTC"),
+                        datetime=pd.Timestamp(f"{date_local} {h:02d}:00:00", tz="UTC"),
                         datetime_local=pd.Timestamp(f"{date_local} {h:02d}:00:00"),
                         parameter="pm10",
                         value=20.0,

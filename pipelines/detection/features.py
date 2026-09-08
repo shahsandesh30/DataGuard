@@ -73,12 +73,12 @@ def _pm_co_movement(conformed: pd.DataFrame, locationid: int, date_local: str) -
         (conformed["locationid"] == locationid)
         & (conformed["date_local"] == date_local)
         & (conformed["parameter"] == "pm25")
-    ].sort_values("datetime_utc")["value"]
+    ].sort_values("datetime")["value"]
     pm10 = conformed[
         (conformed["locationid"] == locationid)
         & (conformed["date_local"] == date_local)
         & (conformed["parameter"] == "pm10")
-    ].sort_values("datetime_utc")["value"]
+    ].sort_values("datetime")["value"]
     if len(pm25) < 3 or len(pm10) < 3:
         return 0.0
     length = min(len(pm25), len(pm10))
@@ -155,7 +155,7 @@ def build_event_features(conformed: pd.DataFrame) -> pd.DataFrame:
             (pm["locationid"] == locationid)
             & (pm["date_local"] == date_local)
             & (pm["parameter"] == parameter)
-        ].sort_values("datetime_utc")
+        ].sort_values("datetime")
         if day.empty:
             continue
 
