@@ -63,6 +63,7 @@ CONFORMED_COLUMNS = [
 ]
 
 COLUMN_ALIASES = {
+    "locationid": "locationid",
     "sensorsid": "sensor_id",
     "sensorid": "sensor_id",
     "location": "location_name",
