@@ -319,7 +319,11 @@ with tab_alerts:
                     "date_local"
                 )
 
-                # Display a quick summary of the selected station.
+                # ---------------------------------------------------------
+                # Station Summary
+                # ---------------------------------------------------------
+                st.markdown("### Station Summary")
+
                 s1, s2, s3 = st.columns(3)
 
                 s1.metric(
@@ -328,7 +332,7 @@ with tab_alerts:
                 )
 
                 s2.metric(
-                    "Average trust score",
+                    "Average Trust Score",
                     f"{station_history['trust_score'].mean():.2f}",
                 )
 
@@ -342,10 +346,46 @@ with tab_alerts:
                     ),
                 )
 
-                # Plot the station's trust-score history.
-                st.caption(
-                    "Trust-score history for the selected station"
-                )
+                st.divider()
+
+                # ---------------------------------------------------------
+                # Trust Score Context
+                # ---------------------------------------------------------
+                trust_values = pd.to_numeric(
+                    station_history["trust_score"],
+                    errors="coerce",
+                ).dropna()
+
+                with st.container(border=True):
+                    st.markdown("#### Trust Score Context")
+                    st.caption(
+                        "Summary of trust-score variation for the selected station."
+                    )
+
+                    if not trust_values.empty:
+                        t1, t2, t3 = st.columns(3)
+
+                        t1.metric(
+                            "Minimum",
+                            f"{trust_values.min():.2f}",
+                        )
+
+                        t2.metric(
+                            "Median",
+                            f"{trust_values.median():.2f}",
+                        )
+
+                        t3.metric(
+                            "Maximum",
+                            f"{trust_values.max():.2f}",
+                        )
+
+                    else:
+                        st.info(
+                            "No trust score data is available for this station."
+                        )
+
+                st.markdown("#### Trust Score History")
 
                 st.line_chart(
                     station_history,
@@ -353,6 +393,8 @@ with tab_alerts:
                     y="trust_score",
                     use_container_width=True,
                 )
+
+
 
                 # Provide the underlying alert records for investigation.
                 station_cols = [
