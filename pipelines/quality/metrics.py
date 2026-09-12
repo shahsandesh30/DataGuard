@@ -21,6 +21,8 @@ from pipelines.config import (
 from pipelines.conformance.units import CANONICAL_UNITS, canonical_parameter, normalize_unit
 from pipelines.ingestion.fetch import bronze_path, parse_bronze_filename
 
+# Columns for the fine-grained sensor-day metric table (one row per
+# location/sensor/parameter/day).
 SENSOR_DAY_COLUMNS = [
     "locationid",
     "sensor_id",
@@ -38,6 +40,8 @@ SENSOR_DAY_COLUMNS = [
     "lat_lon_unique",
 ]
 
+# Columns for the aggregated station-day metric table (one row per
+# location/day, rolled up across all sensors at that station).
 STATION_DAY_COLUMNS = [
     "locationid",
     "date_local",
@@ -75,19 +79,26 @@ METRIC_COLUMNS = [
 
 
 def _empty_sensor_day() -> pd.DataFrame:
+    """Return an empty sensor-day frame with the correct columns (no rows)."""
     return pd.DataFrame(columns=SENSOR_DAY_COLUMNS)
 
 
 def _empty_station_day() -> pd.DataFrame:
+    """Return an empty station-day frame with the correct columns (no rows)."""
     return pd.DataFrame(columns=STATION_DAY_COLUMNS)
 
 
 def max_stuck_run(values: pd.Series) -> int:
-    """Longest run of identical consecutive values (ordered by caller)."""
+    """Longest run of identical consecutive values (ordered by caller).
+
+    Used to detect a "stuck" sensor that keeps reporting the same
+    value repeatedly instead of varying readings. NaNs break the run.
+    """
     longest = current = 0
     prev = None
     for value in values:
         if pd.isna(value):
+            # A missing reading breaks any current streak.
             prev = None
             current = 0
             continue
@@ -102,6 +113,7 @@ def max_stuck_run(values: pd.Series) -> int:
 
 
 def _unit_is_mismatch(parameter: str, original_unit: str) -> bool:
+    """Check whether a reading's original unit differs from the canonical unit for its parameter."""
     param = canonical_parameter(parameter)
     canonical = CANONICAL_UNITS.get(param)
     if canonical is None:
@@ -116,7 +128,12 @@ def _expected_readings(
     parameter: str,
     date_local: str,
 ) -> int:
-    """Trailing median daily cadence for one sensor-parameter, else hourly default."""
+    """Trailing median daily cadence for one sensor-parameter, else hourly default.
+
+    Looks back TRAILING_CADENCE_DAYS days of history for this exact
+    sensor/parameter to estimate how many readings we'd normally expect
+    in a day. Falls back to DEFAULT_HOURLY_READINGS if there's no history yet.
+    """
     day = date.fromisoformat(date_local)
     window_start = (day - timedelta(days=TRAILING_CADENCE_DAYS)).isoformat()
     history = conformed[
@@ -148,8 +165,10 @@ def compute_sensor_day_metrics(conformed: pd.DataFrame) -> pd.DataFrame:
         expected = _expected_readings(
             conformed, int(locationid), int(sensor_id), str(parameter), str(date_local)
         )
+        # Clamp missing_rate to [0, 1] in case actual readings exceed expected.
         missing_rate = min(1.0, max(0.0, 1.0 - received / expected))
 
+        # Count exact duplicate readings for the same sensor/timestamp/parameter.
         dup_mask = ordered.duplicated(subset=["sensor_id", "datetime", "parameter"], keep="first")
         duplicate_count = int(dup_mask.sum())
 
@@ -157,12 +176,14 @@ def compute_sensor_day_metrics(conformed: pd.DataFrame) -> pd.DataFrame:
         variance = float(values.var()) if received > 1 else 0.0
         stuck = max_stuck_run(values)
 
+        # Flag readings whose original unit doesn't match the canonical unit for the parameter.
         unit_mismatch = int(
             ordered.apply(
                 lambda r: _unit_is_mismatch(r["parameter"], r["original_unit"]),
                 axis=1,
             ).sum()
         )
+        # Distinct lat/lon pairs reported for this sensor on this day (should usually be 1).
         lat_lon_unique = int(ordered[["lat", "lon"]].drop_duplicates().shape[0])
 
         rows.append(
@@ -187,7 +208,12 @@ def compute_sensor_day_metrics(conformed: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_bronze_manifest(bronze_root: Path) -> pd.DataFrame:
-    """Load bronze arrival manifest as a DataFrame."""
+    """Load bronze arrival manifest as a DataFrame.
+
+    The manifest is a JSON-lines file tracking when each location/day
+    file arrived (or if it's missing). Returns an empty frame with the
+    expected columns if the manifest doesn't exist yet.
+    """
     path = bronze_root / "_manifest.jsonl"
     if not path.exists():
         return pd.DataFrame(
@@ -222,7 +248,11 @@ def read_bronze_schema(path: Path) -> set[str]:
 
 
 def _schema_drift_by_location(bronze_root: Path) -> dict[tuple[int, str], bool]:
-    """Return {(locationid, date_local): schema_changed} vs previous day."""
+    """Return {(locationid, date_local): schema_changed} vs previous day.
+
+    Compares each day's CSV header against the previous day's header
+    for the same location, to detect when a source changes its schema.
+    """
     flags: dict[tuple[int, str], bool] = {}
     by_location: dict[int, list[tuple[date, Path, set[str]]]] = {}
     for path in sorted(bronze_root.rglob("*.csv.gz")):
@@ -244,7 +274,12 @@ def _schema_drift_by_location(bronze_root: Path) -> dict[tuple[int, str], bool]:
 
 
 def _file_lateness_hours(locationid: int, date_local: str, manifest: pd.DataFrame) -> float:
-    """Hours past the 72h delivery commitment for one location-day."""
+    """Hours past the 72h delivery commitment for one location-day.
+
+    Returns 0 if the file arrived on time (or if there's no manifest
+    entry at all), and the full commitment window if the file is
+    marked missing.
+    """
     if manifest.empty:
         return 0.0
     day = date.fromisoformat(date_local)
@@ -267,6 +302,11 @@ def _file_lateness_hours(locationid: int, date_local: str, manifest: pd.DataFram
 
 
 def _cross_sensor_pm25_spread(conformed: pd.DataFrame, locationid: int, date_local: str) -> float:
+    """Largest disagreement between multiple PM2.5 sensors at the same station/hour.
+
+    For each hour with more than one sensor reporting PM2.5, computes
+    the max-min spread, then returns the largest spread across the day.
+    """
     pm25 = conformed[
         (conformed["locationid"] == locationid)
         & (conformed["date_local"] == date_local)
@@ -287,12 +327,18 @@ def compute_station_day_metrics(
     bronze_root: Path | None = None,
     sensor_metrics: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Return one metric row per (locationid, date_local)."""
+    """Return one metric row per (locationid, date_local).
+
+    Aggregates sensor-day metrics up to the station level and adds
+    station-wide signals like sensor dropout, schema drift, and file
+    delivery lateness.
+    """
     if conformed is None or conformed.empty:
         return _empty_station_day()
 
     settings = load_settings()
     bronze = Path(bronze_root or settings.bronze_root)
+    # Reuse precomputed sensor metrics if given, otherwise compute them here.
     detail = sensor_metrics if sensor_metrics is not None else compute_sensor_day_metrics(conformed)
     manifest = load_bronze_manifest(bronze)
     schema_flags = _schema_drift_by_location(bronze)
@@ -300,6 +346,8 @@ def compute_station_day_metrics(
     station_days = conformed[["locationid", "date_local"]].drop_duplicates()
     rows: list[dict] = []
 
+    # Build a lookup of which sensors reported at each location/day,
+    # used below to detect sensors that dropped out day-over-day.
     sensors_by_loc_day: dict[tuple[int, str], set[int]] = {}
     for _, row in conformed.drop_duplicates(subset=["locationid", "date_local", "sensor_id"]).iterrows():
         key = (int(row["locationid"]), str(row["date_local"]))
@@ -320,6 +368,7 @@ def compute_station_day_metrics(
         duplicates = int(day_detail["duplicate_count"].sum()) if not day_detail.empty else 0
         duplicate_rate = duplicates / total_readings if total_readings else 0.0
 
+        # Sensors seen today vs. yesterday, to compute dropout count.
         sensors_today = sensors_by_loc_day.get(key, set())
         dropout = len(prev_sensors.get(locationid, set()) - sensors_today)
         prev_sensors[locationid] = sensors_today
