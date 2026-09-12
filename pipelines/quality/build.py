@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class QualityBuildResult:
+    """Summary counts and output location produced by a single build_quality() run."""
+
     sensor_day_rows: int
     station_day_rows: int
     rule_incidents: int
@@ -34,6 +36,7 @@ class QualityBuildResult:
 
 
 def _year_from_date_local(date_local: str) -> int:
+    """Extract the 4-digit year from a date_local string (used for partitioning)."""
     return int(str(date_local)[:4])
 
 
@@ -43,8 +46,15 @@ def _write_partitioned(
     table_name: str,
     key_cols: list[str],
 ) -> Path:
+    """Write a dataframe to gold, partitioned by locationid/year.
+
+    Clears any existing parquet files for this table first, then writes
+    one partition per (locationid, year) pair. Writes a placeholder
+    empty file if the frame has no rows.
+    """
     output = gold_root / table_name
     if output.exists():
+        # Clear stale partitions from a previous run before rewriting.
         for existing in output.rglob("*.parquet"):
             existing.unlink()
 
@@ -55,6 +65,7 @@ def _write_partitioned(
 
     working = frame.copy()
     working["_year"] = working["date_local"].map(_year_from_date_local)
+    # Group by location and year to build the partition directory structure.
     for (locationid, year), part in working.groupby(["locationid", "_year"], sort=False):
         partition_dir = output / f"locationid={int(locationid)}" / f"year={int(year)}"
         partition_dir.mkdir(parents=True, exist_ok=True)
@@ -67,6 +78,7 @@ def _write_partitioned(
 
 
 def read_quality_metrics(gold_root: Path | None = None) -> pd.DataFrame:
+    """Read all partitioned quality_metrics parquet files back into one dataframe."""
     settings = load_settings()
     root = Path(gold_root or settings.gold_root) / "layer1" / "quality_metrics"
     files = sorted(root.rglob("*.parquet"))
@@ -76,6 +88,7 @@ def read_quality_metrics(gold_root: Path | None = None) -> pd.DataFrame:
 
 
 def read_quality_incidents(gold_root: Path | None = None) -> pd.DataFrame:
+    """Read all partitioned quality_incidents parquet files back into one dataframe."""
     settings = load_settings()
     root = Path(gold_root or settings.gold_root) / "layer1" / "quality_incidents"
     files = sorted(root.rglob("*.parquet"))
@@ -95,18 +108,27 @@ def build_quality(
     bronze = Path(bronze_root or settings.bronze_root)
     gold = Path(gold_root or settings.gold_root) / "layer1"
 
+    # Read conformed (cleaned/standardized) data and compute rollups
+    # at both the sensor-day and station-day grain.
     conformed = read_conformed(bronze)
     sensor_metrics = compute_sensor_day_metrics(conformed)
     station_metrics = compute_station_day_metrics(conformed, bronze, sensor_metrics)
 
+    # Rule-based incidents: deterministic thresholds/checks on station metrics.
     rule_incidents = apply_quality_rules(station_metrics)
 
+    # Attempt to fit an anomaly-detection model on top of the rule-based
+    # checks. This only trains once there's enough station-day history
+    # (see MIN_STATION_DAYS); otherwise we skip ML scoring entirely.
     artifact = fit_quality_model(station_metrics)
     model_trained = artifact is not None
     if model_trained:
         save_quality_model(artifact, models_dir)
         scored = score_quality(artifact, station_metrics)
         ml_incidents = model_incidents(scored)
+
+        # Avoid double-counting: drop any ML-flagged incident that a rule
+        # already caught for the same location/day.
         rule_keys: set[tuple[int, str]] = set()
         if not rule_incidents.empty:
             rule_keys = {
@@ -128,11 +150,13 @@ def build_quality(
             MIN_STATION_DAYS,
         )
 
+    # Persist metrics and incidents as partitioned gold tables.
     metrics_path = _write_partitioned(station_metrics, gold, "quality_metrics", ["locationid", "date_local"])
     sensor_path = _write_partitioned(sensor_metrics, gold, "quality_sensor_metrics", ["locationid", "date_local"])
     all_incidents = pd.concat([rule_incidents, ml_incidents], ignore_index=True)
     incidents_path = _write_partitioned(all_incidents, gold, "quality_incidents", ["locationid", "date_local"])
 
+    # Write a small JSON summary alongside the gold tables for quick inspection.
     summary = {
         "sensor_day_rows": int(len(sensor_metrics)),
         "station_day_rows": int(len(station_metrics)),
