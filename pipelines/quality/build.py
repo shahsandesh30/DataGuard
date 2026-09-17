@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from pipelines.config import MIN_STATION_DAYS, load_settings
+from pipelines.config import MIN_STATION_DAYS, get_settings
 from pipelines.conformance.conform import read_conformed
 from pipelines.quality.detector import (
     fit_quality_model,
@@ -67,7 +67,7 @@ def _write_partitioned(
 
 
 def read_quality_metrics(gold_root: Path | None = None) -> pd.DataFrame:
-    settings = load_settings()
+    settings = get_settings()
     root = Path(gold_root or settings.gold_root) / "layer1" / "quality_metrics"
     files = sorted(root.rglob("*.parquet"))
     if not files:
@@ -76,7 +76,7 @@ def read_quality_metrics(gold_root: Path | None = None) -> pd.DataFrame:
 
 
 def read_quality_incidents(gold_root: Path | None = None) -> pd.DataFrame:
-    settings = load_settings()
+    settings = get_settings()
     root = Path(gold_root or settings.gold_root) / "layer1" / "quality_incidents"
     files = sorted(root.rglob("*.parquet"))
     if not files:
@@ -91,7 +91,7 @@ def build_quality(
     models_dir: Path | None = None,
 ) -> QualityBuildResult:
     """Compute Layer 1 metrics and incidents, write to gold."""
-    settings = load_settings()
+    settings = get_settings()
     bronze = Path(bronze_root or settings.bronze_root)
     gold = Path(gold_root or settings.gold_root) / "layer1"
 

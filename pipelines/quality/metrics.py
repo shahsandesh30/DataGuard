@@ -16,7 +16,7 @@ from pipelines.config import (
     DELIVERY_COMMITMENT_HOURS,
     TRAILING_CADENCE_DAYS,
     VARIANCE_EPS,
-    load_settings,
+    get_settings,
 )
 from pipelines.conformance.units import CANONICAL_UNITS, canonical_parameter, normalize_unit
 from pipelines.ingestion.fetch import bronze_path, parse_bronze_filename
@@ -291,7 +291,7 @@ def compute_station_day_metrics(
     if conformed is None or conformed.empty:
         return _empty_station_day()
 
-    settings = load_settings()
+    settings = get_settings()
     bronze = Path(bronze_root or settings.bronze_root)
     detail = sensor_metrics if sensor_metrics is not None else compute_sensor_day_metrics(conformed)
     manifest = load_bronze_manifest(bronze)

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from pipelines.config import load_settings
+from pipelines.config import get_settings
 from pipelines.detection.build import read_event_alerts
 from pipelines.fusion.trust_score import fuse
 from pipelines.quality.build import _write_partitioned, read_quality_incidents
@@ -26,7 +26,7 @@ class FusionBuildResult:
 
 
 def read_trust_alerts(gold_root: Path | None = None) -> pd.DataFrame:
-    settings = load_settings()
+    settings = get_settings()
     root = Path(gold_root or settings.gold_root) / "fusion" / "trust_alerts"
     files = sorted(root.rglob("*.parquet"))
     if not files:
@@ -36,7 +36,7 @@ def read_trust_alerts(gold_root: Path | None = None) -> pd.DataFrame:
 
 def build_fusion(gold_root: Path | None = None) -> FusionBuildResult:
     """Join Layer 1 incidents with Layer 2 alerts and write fusion gold."""
-    settings = load_settings()
+    settings = get_settings()
     gold = Path(gold_root or settings.gold_root)
 
     incidents = read_quality_incidents(gold)

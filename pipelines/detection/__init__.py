@@ -40,7 +40,7 @@ def _build_and_write() -> None:
 def _score_from_derived() -> None:
     """Read derived features from Glue and run the baseline Isolation Forest."""
     from pipelines.detection.io import read_derived_features
-    from pipelines.detection.models import run_baseline_for_all_parameters
+    from pipelines.detection.models import run_baseline_for_all_parameters, inspect_top_anomalies
 
     print("Reading derived features from glue table")
     silver_derived = read_derived_features()
@@ -51,6 +51,10 @@ def _score_from_derived() -> None:
     filename = "scored_results.csv"
     scored.to_csv(filename, index=False)
     print(f"Saved scored results to {filename}")
+
+    print(f"Inspecting scored results...")
+    inspect_score = inspect_top_anomalies(scored, parameter="pm25", k=20)
+    print(f"Top 20 anomalies for pm25:\n{inspect_score[["locationid", "datetime", "parameter", "value", "anomaly_score", "is_anomaly", "deviation_zscore"]]}")
 
 
 def main() -> None:

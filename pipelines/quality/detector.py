@@ -13,7 +13,7 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
-from pipelines.config import MIN_STATION_DAYS, load_settings
+from pipelines.config import MIN_STATION_DAYS, get_settings
 from pipelines.quality.metrics import METRIC_COLUMNS
 
 MODEL_FILENAME = "layer1_isolation_forest.joblib"
@@ -55,7 +55,7 @@ def fit_quality_model(
 
 
 def save_quality_model(artifact: dict, models_dir: Path | None = None) -> Path:
-    settings = load_settings()
+    settings = get_settings()
     root = Path(models_dir or Path("models"))
     root.mkdir(parents=True, exist_ok=True)
     path = root / MODEL_FILENAME

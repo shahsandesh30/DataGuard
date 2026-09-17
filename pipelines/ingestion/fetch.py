@@ -25,7 +25,7 @@ from botocore import UNSIGNED
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from pipelines.config import OPENAQ_ARCHIVE_BUCKET, OPENAQ_ARCHIVE_REGION, load_settings
+from pipelines.config import OPENAQ_ARCHIVE_BUCKET, OPENAQ_ARCHIVE_REGION, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +87,24 @@ def unsigned_s3_client(region: str = OPENAQ_ARCHIVE_REGION):
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+# def fetch_locations_for_region(settings: Settings) -> list[dict]:
+#     """Returns every monitoring location OpenAQ has within settings.bbox."""
+#     headers = _headers(settings)
+#     locations: list[dict] = []
+#     page = 1
+#     while True:
+#         payload = _get_with_retry(
+#             f"{OPENAQ_BASE_URL}/locations",
+#             headers=headers,
+#             params={"bbox": settings.bbox, "limit": LOCATIONS_PAGE_LIMIT, "page": page},
+#         )
+#         results = payload.get("results", [])
+#         locations.extend(results)
+#         found = payload.get("meta", {}).get("found")
+#         if not results or (isinstance(found, int) and len(locations) >= found):
+#             break
+#         page += 1
+#     return locations
 
 def download_archive_object(
     bucket: str,
@@ -128,7 +146,7 @@ def fetch_location_day(
     force: bool = False,
 ) -> FetchResult:
     """Copy one location-day file from the OpenAQ archive to local bronze."""
-    settings = load_settings()
+    settings = get_settings()
     root = Path(bronze_root or settings.bronze_root)
     key = archive_key(locationid, day)
     dest = bronze_path(root, locationid, day)
@@ -209,7 +227,7 @@ def fetch_range(
     downloader: Downloader | None = None,
 ) -> list[FetchResult]:
     """Fetch every location-day in [start, end] for the given locations."""
-    settings = load_settings()
+    settings = get_settings()
     root = Path(bronze_root or settings.bronze_root)
     results: list[FetchResult] = []
     for locationid in locationids:
@@ -232,7 +250,7 @@ def adopt_flat_bronze(bronze_root: Path | None = None) -> list[FetchResult]:
     Also relocates files still under the legacy ``records/csv.gz/.../month=...``
     tree into ``locationid=<ID>/year=<YYYY>/``.
     """
-    settings = load_settings()
+    settings = get_settings()
     root = Path(bronze_root or settings.bronze_root)
     if not root.exists():
         return []
@@ -294,3 +312,93 @@ def adopt_flat_bronze(bronze_root: Path | None = None) -> list[FetchResult]:
         results.append(result)
         logger.info("Adopted %s -> %s", path.name, dest)
     return results
+
+from pipelines.config import Settings, get_settings
+
+@dataclass
+class IngestionResult:
+    has_new_data: bool
+    output_path: Optional[str] = None
+    record_count: int = 0
+    location_count: int = 0
+    run_timestamp: str = ""
+
+def run(settings: Settings) -> IngestionResult:
+    """Entry point called by __main__.py's `ingest` stage and by run-inference."""
+    run_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+    records, location_count = fetch_openaq(settings)
+    if not records:
+        return IngestionResult(has_new_data=False, location_count=location_count, run_timestamp=run_timestamp)
+    output_path = write_bronze(settings, records, run_timestamp)
+    return IngestionResult(
+        has_new_data=True,
+        output_path=output_path,
+        record_count=len(records),
+        location_count=location_count,
+        run_timestamp=run_timestamp,
+    )
+
+
+# if not records:
+#         return ""
+
+#     bronze_client = _bronze_client(settings)
+
+#     # Group records by location and reading date
+#     grouped_records = {}
+
+#     for record in records:
+#         location_id = record["location_id"]
+#         datetime_utc = record["datetime_utc"]
+
+#         # Parse OpenAQ timestamp
+#         if isinstance(datetime_utc, str):
+#             reading_dt = datetime.fromisoformat(
+#                 datetime_utc.replace("Z", "+00:00")
+#             )
+#         else:
+#             reading_dt = datetime_utc
+
+#         year = reading_dt.strftime("%Y")
+#         date = reading_dt.strftime("%Y%m%d")
+
+#         group_key = (location_id, year, date)
+
+#         grouped_records.setdefault(group_key, []).append(record)
+
+#     output_keys = []
+
+#     for (location_id, year, date), location_records in grouped_records.items():
+
+#         filename = f"location-{location_id}-{date}.parquet"
+
+#         key = (
+#             f"locationid={location_id}/"
+#             f"year={year}/"
+#             f"{filename}"
+#         )
+
+#         # Convert records to an Arrow table
+#         table = pa.Table.from_pylist(location_records)
+
+#         # Write Parquet to memory
+#         buffer = io.BytesIO()
+
+#         pq.write_table(
+#             table,
+#             buffer,
+#             compression="snappy",
+#         )
+
+#         # Upload Parquet to S3
+#         bronze_client.put_object(
+#             Bucket=settings.s3_bronze_bucket,
+#             Key=key,
+#             Body=buffer.getvalue(),
+#             ContentType="application/octet-stream",
+#         )
+
+#         output_keys.append(key)
+
+#     # Keep compatibility with the existing IngestionResult
+#     return output_keys[0]

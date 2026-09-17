@@ -15,12 +15,56 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
-from pipelines.config import DEFAULT_locationidS, load_settings
+from pipelines.config import DEFAULT_locationidS, get_settings
 from pipelines.conformance.conform import build_silver
 from pipelines.detection.build import build_detection
 from pipelines.fusion.build import build_fusion
 from pipelines.ingestion.fetch import adopt_flat_bronze, fetch_range
 from pipelines.quality.build import build_quality
+from typing import Callable
+
+from pipelines.config import Settings, get_settings
+
+def _not_implemented(stage_name: str) -> Callable[[Settings], None]:
+    def _runner(settings: Settings) -> None:
+        raise NotImplementedError(f"'{stage_name}' stage is not wired up yet.")
+
+    return _runner
+
+def run_inference_pipeline(settings: Settings) -> None:
+    """Chains ingest -> conform -> quality -> detect -> fuse -> alert.
+
+    Conformance/quality/detection/fusion get wired in here as each is built —
+    for now this proves the ingestion half of the chain, including the
+    early-exit when OpenAQ has nothing new.
+    """
+    result = run_ingestion(settings)
+    if not result.has_new_data:
+        logger.info(
+            "No new data across %d locations in %s, skipping downstream stages.",
+            result.location_count,
+            settings.country_iso,
+        )
+        return
+    logger.info(
+        "Ingested %d records from %d locations -> %s",
+        result.record_count,
+        result.location_count,
+        result.output_path,
+    )
+    # TODO: run_conformance(settings), run_quality(settings), run_detection(settings),
+    #       run_fusion(settings, ...), and the alert check, once each stage exists.
+
+STAGE_FUNCS: dict[str, Callable[[Settings], None]] = {
+    "ingest": run_ingestion,
+    "conform": _not_implemented("conform"),
+    "quality": _not_implemented("quality"),
+    "detect": _not_implemented("detect"),
+    "fuse": _not_implemented("fuse"),
+    "run-inference": run_inference_pipeline,
+    "run-training": _not_implemented("run-training"),
+}
+
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
@@ -93,7 +137,7 @@ def _summarise_fetch(results) -> None:
 
 
 def _cmd_ingest(args: argparse.Namespace) -> int:
-    settings = load_settings()
+    settings = get_settings()
     bronze_root = args.bronze_root or settings.bronze_root
     adopted = adopt_flat_bronze(bronze_root)
     if adopted:
@@ -110,7 +154,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
 
 
 def _cmd_conform(args: argparse.Namespace) -> int:
-    settings = load_settings()
+    settings = get_settings()
     bronze_root = args.bronze_root or settings.bronze_root
     silver_root = args.silver_root or settings.silver_root
     adopt_flat_bronze(bronze_root)
@@ -126,7 +170,7 @@ def _cmd_conform(args: argparse.Namespace) -> int:
 
 
 def _cmd_quality(args: argparse.Namespace) -> int:
-    settings = load_settings()
+    settings = get_settings()
     bronze_root = args.bronze_root or settings.bronze_root
     gold_root = args.gold_root or settings.gold_root
     result = build_quality(bronze_root=bronze_root, gold_root=gold_root)
@@ -142,7 +186,7 @@ def _cmd_quality(args: argparse.Namespace) -> int:
 
 
 def _cmd_detect(args: argparse.Namespace) -> int:
-    settings = load_settings()
+    settings = get_settings()
     bronze_root = args.bronze_root or settings.bronze_root
     gold_root = args.gold_root or settings.gold_root
     result = build_detection(bronze_root=bronze_root, gold_root=gold_root)
@@ -157,7 +201,7 @@ def _cmd_detect(args: argparse.Namespace) -> int:
 
 
 def _cmd_fuse(args: argparse.Namespace) -> int:
-    settings = load_settings()
+    settings = get_settings()
     gold_root = args.gold_root or settings.gold_root
     result = build_fusion(gold_root=gold_root)
     logging.info(

@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from pipelines.config import load_settings
+from pipelines.config import get_settings
 from pipelines.conformance.units import canonical_parameter, convert_series
 from pipelines.ingestion.fetch import bronze_key, parse_bronze_filename
 
@@ -324,7 +324,7 @@ def write_silver_dataset(conformed: pd.DataFrame, silver_root: Path) -> Path:
 
 
 def read_silver(silver_root: Path | None = None) -> pd.DataFrame:
-    settings = load_settings()
+    settings = get_settings()
     root = Path(silver_root or settings.silver_root)
     files = [
         path
@@ -343,7 +343,7 @@ def build_silver(
     silver_root: Path | None = None,
 ) -> SilverBuildResult:
     """Read every bronze file, conform it, and write the silver dataset."""
-    settings = load_settings()
+    settings = get_settings()
     bronze = Path(bronze_root or settings.bronze_root)
     silver_dir = Path(silver_root or settings.silver_root)
 
@@ -407,7 +407,7 @@ def build_silver(
 
 def read_conformed(bronze_root: Path | None = None) -> pd.DataFrame:
     """Conform all bronze files in memory for Layer 1 (internal schema)."""
-    settings = load_settings()
+    settings = get_settings()
     bronze = Path(bronze_root or settings.bronze_root)
 
     files = discover_bronze_files(bronze)

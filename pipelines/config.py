@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
@@ -43,37 +42,39 @@ SEVERITY_PENALTY = {"low": 0.2, "medium": 0.4, "high": 0.7}
 FUSION_STATUS_ESCALATED = "escalated"
 FUSION_STATUS_QUARANTINED = "quarantined"
 
-
-def _env_path(name: str, default: str) -> Path:
-    return Path(os.getenv(name, default))
-
-
 @dataclass(frozen=True)
 class Settings:
-    aws_region: str = field(default_factory=lambda: os.getenv("AWS_REGION", "us-east-1"))
-    bronze_bucket: str = field(default_factory=lambda: os.getenv("BRONZE_BUCKET", "dataguard-bronze"))
-    silver_bucket: str = field(default_factory=lambda: os.getenv("SILVER_BUCKET", "dataguard-silver"))
-    gold_bucket: str = field(default_factory=lambda: os.getenv("GOLD_BUCKET", "dataguard-gold"))
-    athena_workgroup: str = field(default_factory=lambda: os.getenv("ATHENA_WORKGROUP", "dataguard"))
-    athena_output: str = field(default_factory=lambda: os.getenv("ATHENA_OUTPUT", ""))
-    glue_database: str = field(default_factory=lambda: os.getenv("GLUE_DATABASE", "dataguard"))
-    data_root: Path = field(default_factory=lambda: _env_path("DATA_ROOT", "data"))
-    bronze_root: Path = field(
-        default_factory=lambda: _env_path(
-            "BRONZE_ROOT", str(_env_path("DATA_ROOT", "data") / "bronze")
-        )
-    )
-    silver_root: Path = field(
-        default_factory=lambda: _env_path(
-            "SILVER_ROOT", str(_env_path("DATA_ROOT", "data") / "silver")
-        )
-    )
-    gold_root: Path = field(
-        default_factory=lambda: _env_path(
-            "GOLD_ROOT", str(_env_path("DATA_ROOT", "data") / "gold")
-        )
-    )
+    region: str # Sydney, Melbourne, etc.
+    region_code: str  # Country code for the region (e.g., "AU" for Australia)
+    region_bbox: str # Bounding box for the region (min_lon, min_lat, max_lon, max_lat)
+    s3_bronze_bucket: str
+    s3_silver_bucket: str
+    s3_gold_bucket: str
+    athena_output: str
+    aws_region: str
+    openaq_api_key: str
+    openaq_archive_bucket: str
+    openaq_archive_region: str
+    glue_database: str
 
+def get_settings() -> Settings:
+    """
+    Builds a Settings object for pipeline run.
+    """
 
-def load_settings() -> Settings:
-    return Settings()
+    return Settings(
+        region=os.getenv("DATAGUARD_CITY", "Sydney").lower(),
+        region_code=os.getenv("DATAGUARD_COUNTRY_ISO", "AU").upper(),
+        region_bbox=os.getenv(
+            "DATAGUARD_REGION_BBOX", "150.5209,-34.1183,151.3430,-33.5781"
+        ),
+        s3_bronze_bucket=os.getenv("BRONZE_BUCKET", "dataguard-bronze"),
+        s3_silver_bucket=os.getenv("SILVER_BUCKET", "dataguard-silver"),
+        s3_gold_bucket=os.getenv("GOLD_BUCKET", "dataguard-gold"),
+        aws_region=os.getenv("AWS_REGION", "ap-southeast-2"),
+        athena_output=os.getenv("ATHENA_OUTPUT"),
+        openaq_api_key=os.getenv("OPENAQ_API_KEY"),
+        openaq_archive_bucket=os.getenv("OPENAQ_ARCHIVE_BUCKET", "openaq-data-archive"),
+        openaq_archive_region=os.getenv("OPENAQ_ARCHIVE_REGION", "us-east-1"),
+        glue_database=os.getenv("GLUE_DATABASE", "dataguard_db")
+    )
