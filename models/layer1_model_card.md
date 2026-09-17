@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Detect multivariate data-health anomalies at `(location_id, date_local)` that
+Detect multivariate data-health anomalies at `(locationid, date_local)` that
 single-metric rules may miss. Secondary to deterministic rules R1–R10.
 
 ## Status

@@ -1,4 +1,4 @@
-"""Build fusion gold table: trust-scored Layer 2 alerts."""
+"""Build the fusion gold table: Layer 2 alerts trust-scored by Layer 1 health."""
 
 from __future__ import annotations
 
@@ -9,10 +9,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from pipelines.config import load_settings
-from pipelines.detection.build import read_event_alerts
+from pipelines import storage
+from pipelines.config import (
+    FUSION_STATUS_ESCALATED,
+    FUSION_STATUS_QUARANTINED,
+    load_settings,
+)
 from pipelines.fusion.trust_score import fuse
-from pipelines.quality.build import _write_partitioned, read_quality_incidents
+from pipelines.quality.build import read_quality_incidents
 
 logger = logging.getLogger(__name__)
 
@@ -25,51 +29,45 @@ class FusionBuildResult:
     output_path: str
 
 
-def read_trust_alerts(gold_root: Path | None = None) -> pd.DataFrame:
+def read_trust_alerts(gold_root: str | Path | None = None) -> pd.DataFrame:
     settings = load_settings()
-    root = Path(gold_root or settings.gold_root) / "fusion" / "trust_alerts"
-    files = sorted(root.rglob("*.parquet"))
-    if not files:
-        return pd.DataFrame()
-    return pd.concat((pd.read_parquet(f) for f in files), ignore_index=True)
+    return storage.read_parquet(gold_root or settings.gold_root, "fusion/trust_alerts")
 
 
-def build_fusion(gold_root: Path | None = None) -> FusionBuildResult:
+def read_event_alerts(gold_root: str | Path | None = None) -> pd.DataFrame:
+    """Read the Layer 2 alert table.
+
+    Fusion depends on the gold table, not on pipelines.detection: that module's
+    own reader globs the local filesystem and cannot see an S3 zone.
+    """
+    settings = load_settings()
+    return storage.read_parquet(gold_root or settings.gold_root, "layer2/event_alerts")
+
+
+def build_fusion(gold_root: str | Path | None = None) -> FusionBuildResult:
     """Join Layer 1 incidents with Layer 2 alerts and write fusion gold."""
     settings = load_settings()
-    gold = Path(gold_root or settings.gold_root)
+    gold = storage.normalize(gold_root or settings.gold_root)
 
-    incidents = read_quality_incidents(gold)
-    alerts = read_event_alerts(gold)
-    fused = fuse(incidents, alerts)
+    fused = fuse(read_quality_incidents(gold), read_event_alerts(gold))
+    fusion_root = storage.join(gold, "fusion")
+    storage.write_parquet(fused, fusion_root, "trust_alerts")
 
-    fusion_root = gold / "fusion"
-    alerts_path = _write_partitioned(fused, fusion_root, "trust_alerts", ["location_id", "date_local"])
-
-    escalated = int((fused["status"] == "escalated").sum()) if not fused.empty else 0
-    quarantined = int((fused["status"] == "quarantined").sum()) if not fused.empty else 0
-
-    summary = {
-        "alert_rows": int(len(fused)),
-        "escalated": escalated,
-        "quarantined": quarantined,
-        "alerts_path": str(alerts_path),
-    }
-    fusion_root.mkdir(parents=True, exist_ok=True)
-    (fusion_root / "_fusion_build.json").write_text(
-        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    status = fused["status"] if not fused.empty else pd.Series(dtype=str)
+    result = FusionBuildResult(
+        alert_rows=int(len(fused)),
+        escalated=int((status == FUSION_STATUS_ESCALATED).sum()),
+        quarantined=int((status == FUSION_STATUS_QUARANTINED).sum()),
+        output_path=fusion_root,
     )
-
+    storage.write_text(
+        storage.join(fusion_root, "_build.json"), json.dumps(result.__dict__, indent=2) + "\n"
+    )
     logger.info(
         "Fusion built: %s alerts (%s escalated, %s quarantined) -> %s",
-        len(fused),
-        escalated,
-        quarantined,
+        result.alert_rows,
+        result.escalated,
+        result.quarantined,
         fusion_root,
     )
-    return FusionBuildResult(
-        alert_rows=int(len(fused)),
-        escalated=escalated,
-        quarantined=quarantined,
-        output_path=str(fusion_root),
-    )
+    return result

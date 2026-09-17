@@ -9,7 +9,7 @@ from pipelines.quality.rules import INCIDENT_COLUMNS
 
 def _alert(**overrides) -> dict:
     row = {
-        "location_id": 1544061,
+        "locationid": 1544061,
         "date_local": "2026-01-08",
         "parameter": "pm25",
         "region_id": "sydney_metro",
@@ -28,7 +28,7 @@ def _alert(**overrides) -> dict:
 
 def _incident(**overrides) -> dict:
     row = {
-        "location_id": 1544061,
+        "locationid": 1544061,
         "date_local": "2026-01-08",
         "rule_id": "R2",
         "incident_type": "stuck_sensor",
@@ -92,7 +92,7 @@ def test_build_fusion_writes_gold_partition(tmp_path, monkeypatch):
     alerts = pd.DataFrame(
         [
             _alert(),
-            _alert(location_id=1601414, date_local="2026-01-08", alert_score=0.5, rank=2),
+            _alert(locationid=1601414, date_local="2026-01-08", alert_score=0.5, rank=2),
         ],
         columns=EVENT_ALERT_COLUMNS,
     )

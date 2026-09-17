@@ -1,12 +1,17 @@
 """Fetch daily OpenAQ archive files for a set of locations into the bronze zone.
 
-OpenAQ S3 archive keys use the full path:
+OpenAQ S3 archive keys use the full path::
 
     records/csv.gz/locationid=<ID>/year=<YYYY>/month=<MM>/location-<ID>-<YYYYMMDD>.csv.gz
 
-Local bronze uses a simplified Hive layout (no ``records/csv.gz`` or ``month=``):
+Bronze uses a simplified Hive layout (no ``records/csv.gz`` or ``month=``)::
 
     locationid=<ID>/year=<YYYY>/location-<ID>-<YYYYMMDD>.csv.gz
+
+The bronze root may be a local directory or an ``s3://`` prefix. Archive objects
+are always downloaded to a local staging file first — the OpenAQ bucket is read
+with unsigned requests, and the destination may need different credentials — and
+then handed to :mod:`pipelines.storage` to land in the zone.
 """
 
 from __future__ import annotations
@@ -14,10 +19,10 @@ from __future__ import annotations
 import json
 import logging
 import re
-import shutil
+import tempfile
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import boto3
@@ -25,17 +30,21 @@ from botocore import UNSIGNED
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+from pipelines import storage
 from pipelines.config import OPENAQ_ARCHIVE_BUCKET, OPENAQ_ARCHIVE_REGION, load_settings
 
 logger = logging.getLogger(__name__)
 
 FILENAME_RE = re.compile(r"location-(\d+)-(\d{8})\.csv\.gz$")
+MANIFEST_FILENAME = "_manifest.jsonl"
+
+# (bucket, key, local staging path) -> bytes written. Injected in tests.
 Downloader = Callable[[str, str, Path], int]
 
 
 @dataclass
 class FetchResult:
-    location_id: int
+    locationid: int
     day: date
     archive_key: str
     status: str
@@ -45,143 +54,126 @@ class FetchResult:
     error: str | None = None
 
 
-def archive_key(location_id: int, day: date) -> str:
+def archive_key(locationid: int, day: date) -> str:
     """Return the OpenAQ S3 archive object key for one location-day."""
     return (
-        f"records/csv.gz/locationid={location_id}"
+        f"records/csv.gz/locationid={locationid}"
         f"/year={day.year}/month={day.month:02d}"
-        f"/location-{location_id}-{day.strftime('%Y%m%d')}.csv.gz"
+        f"/location-{locationid}-{day.strftime('%Y%m%d')}.csv.gz"
     )
 
 
-def bronze_key(location_id: int, day: date) -> str:
-    """Return the relative local bronze path for one location-day."""
+def bronze_key(locationid: int, day: date) -> str:
+    """Return the bronze-relative path for one location-day."""
     return (
-        f"locationid={location_id}/year={day.year}"
-        f"/location-{location_id}-{day.strftime('%Y%m%d')}.csv.gz"
+        f"locationid={locationid}/year={day.year}"
+        f"/location-{locationid}-{day.strftime('%Y%m%d')}.csv.gz"
     )
 
 
-def bronze_path(bronze_root: Path, location_id: int, day: date) -> Path:
-    """Local bronze path under ``bronze_root``."""
-    return bronze_root / bronze_key(location_id, day)
+def bronze_path(bronze_root: str | Path, locationid: int, day: date) -> str:
+    """Full location of one bronze file: a local path or an ``s3://`` URI."""
+    return storage.join(bronze_root, bronze_key(locationid, day))
 
 
 def parse_bronze_filename(name: str) -> tuple[int, date] | None:
     match = FILENAME_RE.search(name)
     if not match:
         return None
-    location_id = int(match.group(1))
-    day = datetime.strptime(match.group(2), "%Y%m%d").date()
-    return location_id, day
+    return int(match.group(1)), datetime.strptime(match.group(2), "%Y%m%d").replace(
+        tzinfo=UTC
+    ).date()
 
 
 def unsigned_s3_client(region: str = OPENAQ_ARCHIVE_REGION):
-    return boto3.client(
-        "s3",
-        region_name=region,
-        config=Config(signature_version=UNSIGNED),
-    )
+    """Client for the public OpenAQ bucket — no credentials, no signing."""
+    return boto3.client("s3", region_name=region, config=Config(signature_version=UNSIGNED))
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
-def download_archive_object(
-    bucket: str,
-    key: str,
-    dest: Path,
-    client=None,
-) -> int:
+def download_archive_object(bucket: str, key: str, dest: Path, client=None) -> int:
     """Download one public archive object. Raises FileNotFoundError if missing."""
     client = client or unsigned_s3_client()
     dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".tmp")
     try:
-        client.download_file(bucket, key, str(tmp))
+        client.download_file(bucket, key, str(dest))
     except ClientError as exc:
-        tmp.unlink(missing_ok=True)
+        dest.unlink(missing_ok=True)
         code = str(exc.response.get("Error", {}).get("Code", ""))
         if code in {"404", "NoSuchKey", "404 Not Found"}:
             raise FileNotFoundError(key) from exc
         raise
-    tmp.replace(dest)
     return dest.stat().st_size
 
 
-def _append_manifest(bronze_root: Path, result: FetchResult) -> None:
-    bronze_root.mkdir(parents=True, exist_ok=True)
+def _append_manifest(bronze_root: str | Path, result: FetchResult) -> None:
+    """Record one arrival. Layer 1 measures delivery freshness against this."""
     payload = asdict(result)
     payload["day"] = result.day.isoformat()
-    with (bronze_root / "_manifest.jsonl").open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    storage.append_text(
+        storage.join(bronze_root, MANIFEST_FILENAME),
+        json.dumps(payload, ensure_ascii=True) + "\n",
+    )
 
 
 def fetch_location_day(
-    location_id: int,
+    locationid: int,
     day: date,
     *,
-    bronze_root: Path | None = None,
+    bronze_root: str | Path | None = None,
     bucket: str = OPENAQ_ARCHIVE_BUCKET,
     downloader: Downloader | None = None,
     force: bool = False,
 ) -> FetchResult:
-    """Copy one location-day file from the OpenAQ archive to local bronze."""
+    """Copy one location-day file from the OpenAQ archive into bronze."""
     settings = load_settings()
-    root = Path(bronze_root or settings.bronze_root)
-    key = archive_key(location_id, day)
-    dest = bronze_path(root, location_id, day)
-    arrived_at = _utc_now()
+    root = bronze_root or settings.bronze_root
+    key = archive_key(locationid, day)
+    destination = bronze_path(root, locationid, day)
 
-    if dest.exists() and not force:
+    existing = None if force else storage.file_info(destination)
+    if existing is not None:
+        size, modified = existing
         return FetchResult(
-            location_id=location_id,
+            locationid=locationid,
             day=day,
             archive_key=key,
             status="skipped",
-            local_path=str(dest),
-            bytes=dest.stat().st_size,
-            arrived_at=datetime.fromtimestamp(
-                dest.stat().st_mtime, tz=timezone.utc
-            ).isoformat(),
+            local_path=destination,
+            bytes=size,
+            arrived_at=modified,
         )
 
-    get_object = downloader or (
-        lambda bkt, obj_key, path: download_archive_object(bkt, obj_key, path)
-    )
-    try:
-        size = get_object(bucket, key, dest)
-    except FileNotFoundError:
-        logger.info("Missing archive object (completeness gap): %s", key)
-        result = FetchResult(
-            location_id=location_id,
-            day=day,
-            archive_key=key,
-            status="missing",
-            arrived_at=arrived_at,
-        )
-        _append_manifest(root, result)
-        return result
-    except Exception as exc:  # noqa: BLE001 — record and continue the range
-        logger.warning("Failed to fetch %s: %s", key, exc)
-        result = FetchResult(
-            location_id=location_id,
-            day=day,
-            archive_key=key,
-            status="error",
-            arrived_at=arrived_at,
-            error=str(exc),
-        )
-        _append_manifest(root, result)
-        return result
+    arrived_at = _utc_now()
+    get_object = downloader or download_archive_object
+    with tempfile.TemporaryDirectory() as staging_dir:
+        staging = Path(staging_dir) / f"location-{locationid}-{day:%Y%m%d}.csv.gz"
+        try:
+            get_object(bucket, key, staging)
+        except FileNotFoundError:
+            logger.info("Missing archive object (completeness gap): %s", key)
+            result = FetchResult(locationid, day, key, "missing", arrived_at=arrived_at)
+            _append_manifest(root, result)
+            return result
+        except Exception as exc:  # noqa: BLE001 — record and continue the range
+            logger.warning("Failed to fetch %s: %s", key, exc)
+            result = FetchResult(
+                locationid, day, key, "error", arrived_at=arrived_at, error=str(exc)
+            )
+            _append_manifest(root, result)
+            return result
+
+        size = storage.put_file(staging, destination)
 
     result = FetchResult(
-        location_id=location_id,
+        locationid=locationid,
         day=day,
         archive_key=key,
         status="copied",
-        local_path=str(dest),
+        local_path=destination,
         bytes=size,
         arrived_at=arrived_at,
     )
@@ -200,97 +192,21 @@ def iter_days(start: date, end: date) -> Iterator[date]:
 
 
 def fetch_range(
-    location_ids: list[int],
+    locationids: list[int],
     start: date,
     end: date,
     *,
-    bronze_root: Path | None = None,
+    bronze_root: str | Path | None = None,
     force: bool = False,
     downloader: Downloader | None = None,
 ) -> list[FetchResult]:
     """Fetch every location-day in [start, end] for the given locations."""
     settings = load_settings()
-    root = Path(bronze_root or settings.bronze_root)
-    results: list[FetchResult] = []
-    for location_id in location_ids:
-        for day in iter_days(start, end):
-            results.append(
-                fetch_location_day(
-                    location_id,
-                    day,
-                    bronze_root=root,
-                    force=force,
-                    downloader=downloader,
-                )
-            )
-    return results
-
-
-def adopt_flat_bronze(bronze_root: Path | None = None) -> list[FetchResult]:
-    """Move flat ``location-ID-YYYYMMDD.csv.gz`` files into bronze Hive layout.
-
-    Also relocates files still under the legacy ``records/csv.gz/.../month=...``
-    tree into ``locationid=<ID>/year=<YYYY>/``.
-    """
-    settings = load_settings()
-    root = Path(bronze_root or settings.bronze_root)
-    if not root.exists():
-        return []
-
-    results: list[FetchResult] = []
-
-    legacy = sorted(root.glob("records/csv.gz/locationid=*/year=*/month=*/*.csv.gz"))
-    for path in legacy:
-        parsed = parse_bronze_filename(path.name)
-        if parsed is None:
-            continue
-        location_id, day = parsed
-        dest = bronze_path(root, location_id, day)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if dest.exists():
-            if dest.resolve() != path.resolve():
-                path.unlink()
-            continue
-        shutil.move(str(path), str(dest))
-        results.append(
-            FetchResult(
-                location_id=location_id,
-                day=day,
-                archive_key=archive_key(location_id, day),
-                status="adopted",
-                local_path=str(dest),
-                bytes=dest.stat().st_size,
-                arrived_at=datetime.fromtimestamp(
-                    dest.stat().st_mtime, tz=timezone.utc
-                ).isoformat(),
-            )
+    root = bronze_root or settings.bronze_root
+    return [
+        fetch_location_day(
+            locationid, day, bronze_root=root, force=force, downloader=downloader
         )
-        logger.info("Adopted legacy %s -> %s", path, dest)
-
-    for path in sorted(root.glob("location-*.csv.gz")):
-        parsed = parse_bronze_filename(path.name)
-        if parsed is None:
-            continue
-        location_id, day = parsed
-        dest = bronze_path(root, location_id, day)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if dest.exists():
-            if dest.resolve() != path.resolve():
-                path.unlink()
-            continue
-        shutil.move(str(path), str(dest))
-        result = FetchResult(
-            location_id=location_id,
-            day=day,
-            archive_key=archive_key(location_id, day),
-            status="adopted",
-            local_path=str(dest),
-            bytes=dest.stat().st_size,
-            arrived_at=datetime.fromtimestamp(
-                dest.stat().st_mtime, tz=timezone.utc
-            ).isoformat(),
-        )
-        _append_manifest(root, result)
-        results.append(result)
-        logger.info("Adopted %s -> %s", path.name, dest)
-    return results
+        for locationid in locationids
+        for day in iter_days(start, end)
+    ]

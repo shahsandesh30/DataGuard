@@ -27,26 +27,26 @@ STATUS_COLORS = {
 
 
 def load_stations(bronze_root: Path | None = None) -> pd.DataFrame:
-    """One row per location_id with median lat/lon and a display name."""
+    """One row per locationid with median lat/lon and a display name."""
     conformed = read_conformed(bronze_root)
     if conformed is None or conformed.empty:
-        return pd.DataFrame(columns=["location_id", "location_name", "lat", "lon"])
+        return pd.DataFrame(columns=["locationid", "location_name", "lat", "lon"])
 
     frame = conformed.copy()
-    frame["location_id"] = frame["location_id"].astype(int)
+    frame["locationid"] = frame["locationid"].astype(int)
     frame["lat"] = pd.to_numeric(frame["lat"], errors="coerce")
     frame["lon"] = pd.to_numeric(frame["lon"], errors="coerce")
     frame = frame.dropna(subset=["lat", "lon"])
     if frame.empty:
-        return pd.DataFrame(columns=["location_id", "location_name", "lat", "lon"])
+        return pd.DataFrame(columns=["locationid", "location_name", "lat", "lon"])
 
     rows: list[dict] = []
-    for location_id, group in frame.groupby("location_id", sort=False):
+    for locationid, group in frame.groupby("locationid", sort=False):
         names = group["location_name"].dropna().astype(str)
-        name = names.mode().iloc[0] if not names.empty else str(location_id)
+        name = names.mode().iloc[0] if not names.empty else str(locationid)
         rows.append(
             {
-                "location_id": int(location_id),
+                "locationid": int(locationid),
                 "location_name": name,
                 "lat": float(group["lat"].median()),
                 "lon": float(group["lon"].median()),
@@ -95,7 +95,7 @@ def build_station_status(
     if stations is None or stations.empty:
         return pd.DataFrame(
             columns=[
-                "location_id",
+                "locationid",
                 "location_name",
                 "lat",
                 "lon",
@@ -117,7 +117,7 @@ def build_station_status(
 
     incident_rows: list[dict] = []
     if not day_incidents.empty:
-        for location_id, group in day_incidents.groupby("location_id", sort=False):
+        for locationid, group in day_incidents.groupby("locationid", sort=False):
             rule_ids = sorted({str(r) for r in group["rule_id"].dropna().unique()})
             severities = group["severity"].dropna().astype(str)
             max_sev = ""
@@ -125,7 +125,7 @@ def build_station_status(
                 max_sev = max(severities, key=_severity_rank)
             incident_rows.append(
                 {
-                    "location_id": int(location_id),
+                    "locationid": int(locationid),
                     "has_quality_incident": True,
                     "max_severity": max_sev.lower() if max_sev else "",
                     "incident_rule_ids": ",".join(rule_ids),
@@ -135,7 +135,7 @@ def build_station_status(
 
     alert_rows: list[dict] = []
     if not day_alerts.empty:
-        for location_id, group in day_alerts.groupby("location_id", sort=False):
+        for locationid, group in day_alerts.groupby("locationid", sort=False):
             # Prefer escalated over quarantined when both exist for the station-day.
             statuses = set(group["status"].astype(str))
             if "escalated" in statuses:
@@ -149,7 +149,7 @@ def build_station_status(
                 subset = group
             alert_rows.append(
                 {
-                    "location_id": int(location_id),
+                    "locationid": int(locationid),
                     "fusion_status": fusion_status,
                     "trust_score": float(subset["trust_score"].max()),
                 }
@@ -157,16 +157,16 @@ def build_station_status(
     alert_summary = pd.DataFrame(alert_rows)
 
     result = stations.copy()
-    result["location_id"] = result["location_id"].astype(int)
+    result["locationid"] = result["locationid"].astype(int)
     if not incident_summary.empty:
-        result = result.merge(incident_summary, on="location_id", how="left")
+        result = result.merge(incident_summary, on="locationid", how="left")
     else:
         result["has_quality_incident"] = False
         result["max_severity"] = ""
         result["incident_rule_ids"] = ""
 
     if not alert_summary.empty:
-        result = result.merge(alert_summary, on="location_id", how="left")
+        result = result.merge(alert_summary, on="locationid", how="left")
     else:
         result["fusion_status"] = pd.NA
         result["trust_score"] = pd.NA
@@ -201,4 +201,4 @@ def build_station_status(
     result["date_local"] = as_of_date or ""
     result["color"] = result["status"].map(STATUS_COLORS)
     result["priority"] = result["status"].map(STATUS_PRIORITY).fillna(99)
-    return result.sort_values(["priority", "location_id"]).drop(columns=["priority"])
+    return result.sort_values(["priority", "locationid"]).drop(columns=["priority"])

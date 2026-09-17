@@ -19,7 +19,7 @@ from pipelines.ingestion.fetch import archive_key, bronze_key, bronze_path
 
 def _raw_row(**overrides) -> dict:
     row = {
-        "location_id": 2178,
+        "locationid": 2178,
         "sensors_id": 3919,
         "location": "Del Norte-2178",
         "datetime": "2023-01-01T01:00:00-07:00",
@@ -55,7 +55,7 @@ def test_conform_measurements_renames_parses_and_keeps_negatives():
     )
     conformed = conform_measurements(raw)
     assert list(conformed.columns) == CONFORMED_COLUMNS
-    assert conformed["datetime_utc"].dt.tz is not None
+    assert conformed["datetime"].dt.tz is not None
     assert set(conformed["date_local"]) == {"2023-01-01"}
     assert set(conformed["unit"]) == {"µg/m³"}
 
@@ -79,7 +79,7 @@ def test_build_silver_from_gzipped_bronze(tmp_path: Path):
     bronze_file = tmp_path / "bronze" / bronze_key(2178, day)
     bronze_file.parent.mkdir(parents=True)
     csv = (
-        "location_id,sensors_id,location,datetime,lat,lon,parameter,units,value\n"
+        "locationid,sensors_id,location,datetime,lat,lon,parameter,units,value\n"
         "2178,3919,Del Norte-2178,2023-01-01T01:00:00-07:00,35.1353,-106.584702,pm10,µg/m³,45.0\n"
         "2178,3917,Del Norte-2178,2023-01-01T01:00:00-07:00,35.1353,-106.584702,o3,ppm,0.04\n"
     )
@@ -101,7 +101,7 @@ def test_build_silver_from_gzipped_bronze(tmp_path: Path):
 
 def _sydney_row(**overrides) -> dict:
     row = {
-        "location_id": 2392564,
+        "locationid": 2392564,
         "location_name": "Sydney, Australia",
         "parameter": "pm25",
         "value": 12.5,
@@ -136,9 +136,9 @@ def test_discover_bronze_includes_flat_csv(tmp_path: Path):
     day = date(2023, 1, 1)
     gz_path = tmp_path / "bronze" / bronze_key(2178, day)
     gz_path.parent.mkdir(parents=True)
-    gz_path.write_bytes(gzip.compress(b"location_id,sensors_id\n"))
+    gz_path.write_bytes(gzip.compress(b"locationid,sensors_id\n"))
     csv_path = tmp_path / "bronze" / "openaq_location_2392564_sydney.csv"
-    csv_path.write_text("location_id,parameter\n", encoding="utf-8")
+    csv_path.write_text("locationid,parameter\n", encoding="utf-8")
 
     discovered = discover_bronze_files(tmp_path / "bronze")
     assert gz_path in discovered
@@ -151,7 +151,7 @@ def test_build_silver_from_flat_export_csv(tmp_path: Path):
     bronze_root.mkdir()
     csv_path = bronze_root / "openaq_location_2392564_sydney.csv"
     csv_path.write_text(
-        "location_id,location_name,parameter,value,unit,datetimeUtc,datetimeLocal,"
+        "locationid,location_name,parameter,value,unit,datetimeUtc,datetimeLocal,"
         "latitude,longitude\n"
         "2392564,\"Sydney, Australia\",pm25,12.5,µg/m³,"
         "2026-08-01T14:00:00Z,2026-08-02T00:00:00+10:00,-33.8877,151.2150\n",

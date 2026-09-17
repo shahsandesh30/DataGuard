@@ -12,7 +12,7 @@ from sklearn.preprocessing import StandardScaler
 from pipelines.detection.features import FEATURE_MODEL_COLUMNS
 
 EVENT_ALERT_COLUMNS = [
-    "location_id",
+    "locationid",
     "date_local",
     "parameter",
     "region_id",

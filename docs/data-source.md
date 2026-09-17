@@ -18,7 +18,7 @@ Daily gzipped CSV files per location:
 records/csv.gz/locationid=<ID>/year=<YYYY>/month=<MM>/location-<ID>-<YYYYMMDD>.csv.gz
 ```
 
-Columns include: `location_id`, `sensors_id`, `location`, `datetime`, `lat`,
+Columns include: `locationid`, `sensors_id`, `location`, `datetime`, `lat`,
 `lon`, `parameter` (pm25, pm10, o3, no2, so2, co, …), `units`, `value`.
 
 OpenAQ states that files are written approximately **72 hours after the end of

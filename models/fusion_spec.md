@@ -11,7 +11,7 @@ deleted or hidden.
 
 | Component | Status |
 |---|---|
-| Join on `(location_id, date_local)` | **Active** |
+| Join on `(locationid, date_local)` | **Active** |
 | Continuous `trust_score` | **Active** |
 | Escalated / quarantined status | **Active** |
 | Gold publish `data/gold/fusion/trust_alerts/` | **Active** |
@@ -68,7 +68,7 @@ bucket for review prioritisation.
 
 `TRUST_ALERT_COLUMNS` in `pipelines/fusion/trust_score.py`:
 
-- Pass-through: `location_id`, `date_local`, `parameter`, `region_id`,
+- Pass-through: `locationid`, `date_local`, `parameter`, `region_id`,
   `alert_score`, `rank`, `agreement_count`, detector flags, `weak_label`,
   `feature_snapshot`
 - Fusion: `has_quality_incident`, `max_severity`, `incident_count`,

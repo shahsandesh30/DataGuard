@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from pipelines.config import (
-    DEFAULT_LOCATION_IDS,
+    DEFAULT_locationidS,
     LAYER2_PM_PARAMETERS,
     LAYER2_REGION_ID,
     WEAK_LABEL_MIN_LOCATIONS,
@@ -23,7 +23,7 @@ from pipelines.detection.baseline import (
 )
 
 EVENT_FEATURE_COLUMNS = [
-    "location_id",
+    "locationid",
     "date_local",
     "parameter",
     "region_id",
@@ -68,17 +68,17 @@ def _empty_features() -> pd.DataFrame:
     return pd.DataFrame(columns=EVENT_FEATURE_COLUMNS)
 
 
-def _pm_co_movement(conformed: pd.DataFrame, location_id: int, date_local: str) -> float:
+def _pm_co_movement(conformed: pd.DataFrame, locationid: int, date_local: str) -> float:
     pm25 = conformed[
-        (conformed["location_id"] == location_id)
+        (conformed["locationid"] == locationid)
         & (conformed["date_local"] == date_local)
         & (conformed["parameter"] == "pm25")
-    ].sort_values("datetime_utc")["value"]
+    ].sort_values("datetime")["value"]
     pm10 = conformed[
-        (conformed["location_id"] == location_id)
+        (conformed["locationid"] == locationid)
         & (conformed["date_local"] == date_local)
         & (conformed["parameter"] == "pm10")
-    ].sort_values("datetime_utc")["value"]
+    ].sort_values("datetime")["value"]
     if len(pm25) < 3 or len(pm10) < 3:
         return 0.0
     length = min(len(pm25), len(pm10))
@@ -93,12 +93,12 @@ def _regional_daily_means(
     conformed: pd.DataFrame,
     date_local: str,
     parameter: str,
-    location_ids: list[int],
+    locationids: list[int],
 ) -> dict[int, float]:
     means: dict[int, float] = {}
-    for loc in location_ids:
+    for loc in locationids:
         subset = conformed[
-            (conformed["location_id"] == loc)
+            (conformed["locationid"] == loc)
             & (conformed["date_local"] == date_local)
             & (conformed["parameter"] == parameter)
         ]
@@ -111,16 +111,16 @@ def _regional_agreement(
     conformed: pd.DataFrame,
     date_local: str,
     parameter: str,
-    location_ids: list[int],
+    locationids: list[int],
     trailing_regional_median: float,
 ) -> float:
     if trailing_regional_median <= 0:
         return 0.0
     elevated = 0
     total = 0
-    for loc in location_ids:
+    for loc in locationids:
         subset = conformed[
-            (conformed["location_id"] == loc)
+            (conformed["locationid"] == loc)
             & (conformed["date_local"] == date_local)
             & (conformed["parameter"] == parameter)
         ]
@@ -137,29 +137,29 @@ def build_event_features(conformed: pd.DataFrame) -> pd.DataFrame:
     if conformed is None or conformed.empty:
         return _empty_features()
 
-    region_locations = [loc for loc in DEFAULT_LOCATION_IDS if loc != 2178]
+    region_locations = [loc for loc in DEFAULT_locationidS if loc != 2178]
 
     pm = conformed[conformed["parameter"].isin(LAYER2_PM_PARAMETERS)].copy()
     if pm.empty:
         return _empty_features()
 
     rows: list[dict] = []
-    keys = pm[["location_id", "date_local", "parameter"]].drop_duplicates()
+    keys = pm[["locationid", "date_local", "parameter"]].drop_duplicates()
 
     for _, key in keys.iterrows():
-        location_id = int(key["location_id"])
+        locationid = int(key["locationid"])
         date_local = str(key["date_local"])
         parameter = str(key["parameter"])
 
         day = pm[
-            (pm["location_id"] == location_id)
+            (pm["locationid"] == locationid)
             & (pm["date_local"] == date_local)
             & (pm["parameter"] == parameter)
-        ].sort_values("datetime_utc")
+        ].sort_values("datetime")
         if day.empty:
             continue
 
-        stats = trailing_stats(conformed, location_id, parameter, date_local)
+        stats = trailing_stats(conformed, locationid, parameter, date_local)
         values = day["value"]
         daily_mean = float(values.mean())
         daily_max = float(values.max())
@@ -190,11 +190,11 @@ def build_event_features(conformed: pd.DataFrame) -> pd.DataFrame:
         )
         spatial_isolation = max(0.0, abs(peer_z)) * (1.0 - reg_agreement)
 
-        co_move = _pm_co_movement(conformed, location_id, date_local) if parameter in ("pm25", "pm10") else 0.0
+        co_move = _pm_co_movement(conformed, locationid, date_local) if parameter in ("pm25", "pm10") else 0.0
 
         rows.append(
             {
-                "location_id": location_id,
+                "locationid": locationid,
                 "date_local": date_local,
                 "parameter": parameter,
                 "region_id": LAYER2_REGION_ID,
@@ -220,13 +220,13 @@ def _elevated_location_count(
     conformed: pd.DataFrame,
     date_local: str,
     parameter: str,
-    location_ids: list[int],
+    locationids: list[int],
     trailing_regional_median: float,
 ) -> int:
     elevated = 0
-    for loc in location_ids:
+    for loc in locationids:
         subset = conformed[
-            (conformed["location_id"] == loc)
+            (conformed["locationid"] == loc)
             & (conformed["date_local"] == date_local)
             & (conformed["parameter"] == parameter)
         ]
@@ -242,7 +242,7 @@ def weak_labels(features: pd.DataFrame, conformed: pd.DataFrame | None = None) -
     if features is None or features.empty:
         return pd.Series(dtype=bool)
 
-    region_locations = [loc for loc in DEFAULT_LOCATION_IDS if loc != 2178]
+    region_locations = [loc for loc in DEFAULT_locationidS if loc != 2178]
     pm25_daily = features[features["parameter"] == "pm25"].copy()
     regional_means: dict[str, float] = {}
     trailing_medians: dict[str, float] = {}

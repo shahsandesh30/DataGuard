@@ -16,7 +16,7 @@ def _parse_day(date_local: str) -> date:
 
 def trailing_daily_means(
     conformed: pd.DataFrame,
-    location_id: int,
+    locationid: int,
     parameter: str,
     before_day: str,
 ) -> pd.Series:
@@ -24,7 +24,7 @@ def trailing_daily_means(
     cutoff = _parse_day(before_day)
     window_start = cutoff - timedelta(days=LAYER2_BASELINE_DAYS)
     subset = conformed[
-        (conformed["location_id"] == location_id)
+        (conformed["locationid"] == locationid)
         & (conformed["parameter"] == parameter)
         & (conformed["date_local"] >= window_start.isoformat())
         & (conformed["date_local"] < before_day)
@@ -36,15 +36,15 @@ def trailing_daily_means(
 
 def trailing_stats(
     conformed: pd.DataFrame,
-    location_id: int,
+    locationid: int,
     parameter: str,
     before_day: str,
 ) -> dict[str, float]:
     """Median, std, p90, Q3, IQR from trailing daily means."""
-    daily = trailing_daily_means(conformed, location_id, parameter, before_day)
+    daily = trailing_daily_means(conformed, locationid, parameter, before_day)
     if daily.empty:
         all_vals = conformed[
-            (conformed["location_id"] == location_id) & (conformed["parameter"] == parameter)
+            (conformed["locationid"] == locationid) & (conformed["parameter"] == parameter)
         ]["value"]
         if all_vals.empty:
             return {

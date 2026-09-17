@@ -13,7 +13,7 @@ from pipelines.config import MISSING_RATE_THRESHOLD, STUCK_RUN_THRESHOLD
 from pipelines.quality.metrics import STATION_DAY_COLUMNS
 
 INCIDENT_COLUMNS = [
-    "location_id",
+    "locationid",
     "date_local",
     "rule_id",
     "incident_type",
@@ -65,14 +65,12 @@ _RULES: list[dict] = [
         "source": "rule",
         "check": lambda m: m["sensor_dropout_count"] >= 1,
     },
-    {
-        "rule_id": "R6",
-        "incident_type": "freshness_anomaly",
-        "severity": "medium",
-        "event_code": "E2",
-        "source": "rule",
-        "check": lambda m: m["file_lateness_hours"] > 0,
-    },
+    # R6 (freshness_anomaly) is deliberately absent. It compared the manifest's
+    # arrived_at — when *we* downloaded a file — against OpenAQ's 72h publication
+    # deadline, so backfilling an old month made every file ~240 days "late" and
+    # fired on nearly every station-day. file_lateness_hours is still computed
+    # and still feeds the model; restore the rule once the pipeline runs on a
+    # schedule, where the measurement actually means something.
     {
         "rule_id": "R7",
         "incident_type": "missing_file",
@@ -114,7 +112,7 @@ def _snapshot(row: pd.Series) -> str:
 
 
 def apply_quality_rules(station_metrics: pd.DataFrame) -> pd.DataFrame:
-    """Return one incident row per (location_id, date_local, rule_id) that fires."""
+    """Return one incident row per (locationid, date_local, rule_id) that fires."""
     if station_metrics is None or station_metrics.empty:
         return pd.DataFrame(columns=INCIDENT_COLUMNS)
 
@@ -124,7 +122,7 @@ def apply_quality_rules(station_metrics: pd.DataFrame) -> pd.DataFrame:
             if rule["check"](row):
                 incidents.append(
                     {
-                        "location_id": int(row["location_id"]),
+                        "locationid": int(row["locationid"]),
                         "date_local": str(row["date_local"]),
                         "rule_id": rule["rule_id"],
                         "incident_type": rule["incident_type"],
