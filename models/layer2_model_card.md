@@ -12,10 +12,14 @@ detection — stuck sensors, missing files, and schema drift belong to Layer 1.
 |---|---|
 | Feature engineering | **Active** — station-day-parameter features |
 | Weak labels (eval only) | **Active** — regional PM2.5 elevation heuristic |
-| IF + LOF + DBSCAN ensemble | **Gated** — trains only when ≥20 feature rows |
+| IF + LOF + DBSCAN ensemble | **Active** — trains once ≥20 feature rows exist |
 
-With the current local sample (~1 day per location), features are written but
-the ensemble is skipped. Fetch more history before expecting ranked alerts:
+Last run (January 2026, four Sydney stations): **164 feature rows → 164 ranked
+alerts**, `ensemble_trained: true`. Of those, fusion escalated 147 and
+quarantined 17.
+
+The ensemble is gated on history by design — below `MIN_EVENT_ROWS` (20) the
+stage writes features and skips scoring, rather than fitting on noise.
 
 ```bash
 python -m pipelines ingest --locations 1544061 1601414 2455394 6430870 --start 2026-01-01 --end 2026-01-31
@@ -52,15 +56,17 @@ regional_pm25_mean > 2 × trailing_regional_median
 AND ≥2 locations elevated same day
 ```
 
-Used for Precision@K narrative in `notebooks/04_layer2_features.ipynb` — **never**
-used as training labels for the ensemble.
+Used for the Precision@K narrative in `notebooks/04_detection_features.ipynb` —
+**never** used as training labels for the ensemble.
 
 ## Limitations
 
-- Sparse sample: ensemble cannot train until `MIN_EVENT_ROWS` (20) feature rows
-- Trailing 7-day baselines are noisy with <7 days of history per station
-- No reference-monitor accuracy metric
-- Fusion trust scoring deferred to Layer 3 (`pipelines/fusion/`)
+- **No evaluation metrics yet.** Precision@K against the weak labels has not been
+  computed on real gold — this is the main open task for the layer.
+- Trailing 7-day baselines are noisy with <7 days of history per station.
+- No reference-monitor accuracy metric.
+- Layer 2 reads **bronze** and re-conforms it in memory rather than reading the
+  silver zone, so it can silently disagree with Layer 1 about the same day.
 
 ## Agreement rates (synthetic fixtures)
 
@@ -70,4 +76,5 @@ On injected spike fixtures in `tests/test_detection.py`:
 - Multi-station elevation triggers weak labels
 - Single-station spikes show elevated `spatial_isolation` vs peers
 
-Re-run notebook section 4 for Precision@K on real gold once 30+ days are ingested.
+Precision@K on real gold is still outstanding; a full month is now ingested, so
+nothing blocks it.
