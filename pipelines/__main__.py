@@ -31,16 +31,17 @@ import sys
 import tempfile
 from collections import Counter
 from datetime import date
+from openaq import OpenAQ
 
 from pipelines import storage
 from pipelines.config import DEFAULT_locationidS, load_settings
 from pipelines.conformance.conform import build_silver
 from pipelines.detection.build import build_detection
 from pipelines.fusion.build import build_fusion
-from pipelines.ingestion.fetch import fetch_range
+from pipelines.ingestion.fetch import fetch_range, fetch_live_api
 from pipelines.quality.build import build_quality
 
-STAGES = ["ingest", "conform", "quality", "detect", "fuse"]
+STAGES = ["ingest", "ingest_live_api", "conform", "quality", "detect", "fuse"]
 
 
 def _roots(args: argparse.Namespace) -> tuple[str, str, str]:
@@ -62,6 +63,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
     helps = {
         "ingest": "Fetch OpenAQ archive files into bronze",
+        "ingest_live_api": "Fetch OpenAQ live API data into bronze",
         "conform": "Build the silver measurement table from bronze",
         "quality": "Build Layer 1 quality metrics and incidents (gold)",
         "detect": "Build Layer 2 event features and ranked alerts (gold)",
@@ -75,6 +77,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             cmd.add_argument("--start", type=date.fromisoformat, required=True)
             cmd.add_argument("--end", type=date.fromisoformat, required=True)
             cmd.add_argument("--force", action="store_true", help="Re-download existing files")
+        if name in ("ingest_live_api", "run"):
+            cmd.add_argument("--location_ids", type=int, nargs="+", default=DEFAULT_locationidS)
         cmd.add_argument(
             "--bronze-root",
             default=None,
@@ -104,6 +108,15 @@ def _ingest(args: argparse.Namespace) -> int:
         if item.status == "error":
             logging.warning("  error %s %s", item.archive_key, item.error or "")
     return 1 if any(item.status == "error" for item in results) else 0
+
+def _ingest_live_api(args: argparse.Namespace) -> int:
+    bronze, _, _ = _roots(args)
+    settings = load_settings()
+    openaq_client = OpenAQ(api_key=settings.openaq_api_key)
+    fetch_live_api(
+        openaq_client, args.location_ids, bronze_root=bronze
+    )
+    
 
 
 def _conform(args: argparse.Namespace) -> int:
@@ -179,6 +192,7 @@ def _fuse(args: argparse.Namespace) -> int:
 
 COMMANDS = {
     "ingest": _ingest,
+    "ingest_live_api": _ingest_live_api,
     "conform": _conform,
     "quality": _quality,
     "detect": _detect,

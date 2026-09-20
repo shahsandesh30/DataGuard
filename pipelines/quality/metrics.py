@@ -30,7 +30,7 @@ from pipelines.config import (
     load_settings,
 )
 from pipelines.conformance.units import CANONICAL_UNITS, canonical_parameter, normalize_unit
-from pipelines.ingestion.fetch import MANIFEST_FILENAME, bronze_key, parse_bronze_filename
+from pipelines.ingestion.fetch import ARCHIVE_MANIFEST_FILENAME, bronze_key, parse_bronze_filename
 
 SENSOR_DAY_COLUMNS = [
     "locationid",
@@ -206,7 +206,7 @@ MANIFEST_COLUMNS = [
 
 def load_bronze_manifest(bronze_root: str | Path) -> pd.DataFrame:
     """Load the bronze arrival log, one JSON line per ingest attempt."""
-    text = storage.read_text(storage.join(bronze_root, MANIFEST_FILENAME))
+    text = storage.read_text(storage.join(bronze_root, ARCHIVE_MANIFEST_FILENAME))
     rows = [json.loads(line) for line in (text or "").splitlines() if line.strip()]
     if not rows:
         return pd.DataFrame(columns=MANIFEST_COLUMNS)
