@@ -33,9 +33,6 @@ def _write_partitioned(
     frame: pd.DataFrame, root: str | Path, name: str, _key_cols: list[str] | None = None
 ) -> str:
     """Shim: ``pipelines.detection.build`` imports this name.
-
-    Layer 2 is owned by another team member, so the old signature stays until
-    that module is updated to call :func:`pipelines.gold.write_table` directly.
     """
     return storage.write_parquet(frame, root, name)
 
