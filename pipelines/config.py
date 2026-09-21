@@ -30,7 +30,10 @@ OPENAQ_ARCHIVE_REGION = "us-east-1"
 
 # Stations to ingest by default: four Sydney metro sites plus one spare.
 # Spelling is load-bearing — pipelines/detection imports this name.
-DEFAULT_locationidS = [1544061, 1601414, 2455394, 6430870, 2178]
+DEFAULT_locationidS = [1707188,4719604,2455393,6430870,2392564,6209161,
+                       1601414,2904356,3229203,1544061,
+                       3358634,2455394,3772130,6092254,6146402,6123216
+                       ]
 
 # --------------------------------------------------------------------------- #
 # Layer 1 — data health
