@@ -137,7 +137,7 @@ LAYER2_TABLES = ("event_features", "event_alerts")
 
 
 def _detect(args: argparse.Namespace) -> int:
-    bronze, _, gold = _roots(args)
+    bronze, silver, gold = _roots(args)
 
     if storage.is_s3(gold):
         # pipelines/detection writes its build summary with Path.write_text, which
@@ -151,7 +151,7 @@ def _detect(args: argparse.Namespace) -> int:
                 storage.write_parquet(frame, storage.join(gold, "layer2"), table)
         published = storage.join(gold, "layer2")
     else:
-        result = build_detection(bronze_root=bronze, gold_root=gold)
+        result = build_detection(silver_root=silver, gold_root=gold)
         published = result.output_path
 
     logging.info(

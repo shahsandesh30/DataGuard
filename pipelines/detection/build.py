@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from pipelines.config import MIN_EVENT_ROWS, load_settings
-from pipelines.conformance.conform import read_conformed
+from pipelines.conformance.conform import read_conformed, read_silver
 from pipelines.detection.ensemble import EVENT_ALERT_COLUMNS, fit_ensemble, score_events
 from pipelines.detection.features import build_event_features, weak_labels
 from pipelines.quality.build import _write_partitioned
@@ -45,17 +45,18 @@ def read_event_alerts(gold_root: Path | None = None) -> pd.DataFrame:
 
 
 def build_detection(
-    bronze_root: Path | None = None,
+    silver_root: Path | None = None,
     gold_root: Path | None = None,
 ) -> DetectionBuildResult:
     """Compute Layer 2 features and ranked alerts, write to gold."""
     settings = load_settings()
-    bronze = Path(bronze_root or settings.bronze_root)
+    silver = Path(silver_root or settings.silver_root)
     gold = Path(gold_root or settings.gold_root) / "layer2"
 
-    conformed = read_conformed(bronze)
-    features = build_event_features(conformed)
-    labels = weak_labels(features, conformed)
+    # conformed = read_conformed(bronze)
+    silver = read_silver(silver)
+    features = build_event_features(silver)
+    labels = weak_labels(features, silver)
 
     ensemble_trained = len(features) >= MIN_EVENT_ROWS
     models = fit_ensemble(features) if ensemble_trained else None
