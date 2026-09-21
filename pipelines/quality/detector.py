@@ -13,8 +13,9 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
-from pipelines.config import MIN_STATION_DAYS, load_settings
+from pipelines.config import MIN_STATION_DAYS
 from pipelines.quality.metrics import METRIC_COLUMNS
+from pipelines.quality.rules import INCIDENT_COLUMNS
 
 MODEL_FILENAME = "layer1_isolation_forest.joblib"
 FEATURE_COLUMNS = METRIC_COLUMNS
@@ -55,19 +56,12 @@ def fit_quality_model(
 
 
 def save_quality_model(artifact: dict, models_dir: Path | None = None) -> Path:
-    settings = load_settings()
-    root = Path(models_dir or Path("models"))
+    root = Path(models_dir or "models")
     root.mkdir(parents=True, exist_ok=True)
     path = root / MODEL_FILENAME
     joblib.dump(artifact, path)
     return path
 
-
-def load_quality_model(models_dir: Path | None = None) -> dict | None:
-    path = Path(models_dir or Path("models")) / MODEL_FILENAME
-    if not path.exists():
-        return None
-    return joblib.load(path)
 
 
 def score_quality(model_artifact: dict | None, metrics: pd.DataFrame) -> pd.DataFrame:
@@ -93,9 +87,7 @@ def score_quality(model_artifact: dict | None, metrics: pd.DataFrame) -> pd.Data
 
 
 def model_incidents(scored_metrics: pd.DataFrame) -> pd.DataFrame:
-    """Build incident rows for model-flagged station-days (no rule overlap handled upstream)."""
-    from pipelines.quality.rules import INCIDENT_COLUMNS
-
+    """Build incident rows for model-flagged station-days."""
     if scored_metrics is None or scored_metrics.empty:
         return pd.DataFrame(columns=INCIDENT_COLUMNS)
 

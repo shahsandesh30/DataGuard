@@ -430,21 +430,9 @@ with tab_quality:
 
     else:
         c1, c2, c3 = st.columns(3)
-
-        c1.metric(
-            "Station-days",
-            len(metrics_view),
-        )
-
-        c2.metric(
-            "Incidents",
-            len(incidents_view),
-        )
-
-        c3.metric(
-            "Locations",
-            metrics_view["locationid"].nunique(),
-        )
+        c1.metric("Station-days", len(metrics_view))
+        c2.metric("Incidents", len(incidents_view))
+        c3.metric("Locations", metrics_view["locationid"].nunique())
 
         st.subheader("Station-day metrics")
 

@@ -65,14 +65,12 @@ _RULES: list[dict] = [
         "source": "rule",
         "check": lambda m: m["sensor_dropout_count"] >= 1,
     },
-    {
-        "rule_id": "R6",
-        "incident_type": "freshness_anomaly",
-        "severity": "medium",
-        "event_code": "E2",
-        "source": "rule",
-        "check": lambda m: m["file_lateness_hours"] > 0,
-    },
+    # R6 (freshness_anomaly) is deliberately absent. It compared the manifest's
+    # arrived_at — when *we* downloaded a file — against OpenAQ's 72h publication
+    # deadline, so backfilling an old month made every file ~240 days "late" and
+    # fired on nearly every station-day. file_lateness_hours is still computed
+    # and still feeds the model; restore the rule once the pipeline runs on a
+    # schedule, where the measurement actually means something.
     {
         "rule_id": "R7",
         "incident_type": "missing_file",

@@ -18,8 +18,21 @@ Daily gzipped CSV files per location:
 records/csv.gz/locationid=<ID>/year=<YYYY>/month=<MM>/location-<ID>-<YYYYMMDD>.csv.gz
 ```
 
-Columns include: `locationid`, `sensors_id`, `location`, `datetime`, `lat`,
-`lon`, `parameter` (pm25, pm10, o3, no2, so2, co, …), `units`, `value`.
+The header row, verbatim:
+
+```
+"location_id","sensors_id","location","datetime","lat","lon","parameter","units","value"
+```
+
+Note **`location_id`, not `locationid`** — and `sensors_id`, not `sensor_id`.
+Every one of these is renamed on the way into silver by `COLUMN_ALIASES` in
+`pipelines/conformance/conform.py`, which keys on the name lowercased with
+underscores stripped so a single entry covers `location_id` / `locationId` /
+`LOCATIONID`. A missing entry makes the file fail conformance behind a warning
+and contribute zero rows; this went undetected for a long time.
+
+`parameter` values seen so far: `pm25`, `pm1`, `um003`, `temperature`,
+`relativehumidity`. `units` arrives as `µg/m³`, `%`, `c`, `particles/cm³`.
 
 OpenAQ states that files are written approximately **72 hours after the end of
 day in the location's timezone**. This is a published delivery commitment —
@@ -44,13 +57,26 @@ labelling is the project's primary Layer 1 result.
 | # | Event | Evidence | Expected Layer 1 signal |
 |---|---|---|---|
 | E1 | v1 and v2 API endpoints retired 31 January 2025; now return HTTP 410 | Documented by OpenAQ | Platform-level discontinuity for any consumer still on old endpoints |
-| E2 | Files delivered later than the stated 72-hour commitment | Measurable against published promise | Freshness anomaly |
+| E2 | Files delivered later than the stated 72-hour commitment | Measurable against published promise | Freshness anomaly — **rule currently disabled**, see below |
 | E3 | Stuck sensor: identical value reported for days or weeks | Directly observable | Zero-variance run; distribution collapse |
 | E4 | Negative concentrations | Physically impossible | Validity violation |
 | E5 | Sensor stops reporting entirely | Directly observable | Completeness gap |
 | E6 | Partial station outage shifting the regional aggregate | Directly observable | Volume anomaly without corresponding event |
 | E7 | Unit or type inconsistency between providers | Cross-provider comparison | Conformance violation |
 | E8 | Station metadata change (relocation, sensor replacement) | Metadata history | Segment-level distribution drift |
+
+### A caveat on E2
+
+Freshness is measured from the bronze manifest's `arrived_at` — *when we
+downloaded* the file — against the 72-hour commitment. On a **backfill** that is
+meaningless: ingesting January in September makes every file read as ~240 days
+late. Rule R6 therefore fired on 90 of 98 station-days and dragged 160 of 164
+alerts into quarantine, so it has been removed from
+`pipelines/quality/rules.py`.
+
+The `file_lateness_hours` metric is still computed and still feeds the Layer 1
+Isolation Forest. Only the rule is off. Restore it once the pipeline runs on a
+schedule near the present, where the measurement means what it claims.
 
 ## Layer 2 target events
 

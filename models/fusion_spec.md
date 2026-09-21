@@ -16,6 +16,10 @@ deleted or hidden.
 | Escalated / quarantined status | **Active** |
 | Gold publish `data/gold/fusion/trust_alerts/` | **Active** |
 
+Last run (January 2026, four Sydney stations): **164 alerts — 147 escalated,
+17 quarantined**, trust scores spanning 0.105 to 1.000. The quarantines break
+down as R2 x9, R4+R7 x7, M1 x1.
+
 ```bash
 python -m pipelines quality
 python -m pipelines detect
@@ -85,8 +89,19 @@ detectors.
 
 ## Limitations
 
-- Sparse Layer 2 alerts until enough feature rows unlock the ensemble
-  (`MIN_EVENT_ROWS`)
-- Binary quarantine on any coincident incident — fine-grained per-rule
-  policies deferred
-- Athena / public dashboard deploy still out of scope for this phase
+- **Fusion is alert-driven.** No Layer 2 alerts means no fusion rows, even when
+  Layer 1 found incidents. Those Layer-1-only findings are not lost — the
+  dashboard renders them as `quality_only` — but they never receive a trust
+  score.
+- **Binary quarantine on any coincident incident.** One low-severity R9
+  (duplicate readings) quarantines an alert exactly as firmly as a high-severity
+  R2 (stuck sensor). The severity penalty grades the *score* but not the
+  *status*; fine-grained per-rule policy is deferred.
+- **The headline metric has not been computed.** How much quarantine actually
+  reduces false alerts, while retaining genuine events, is the whole claim of
+  the project and is still unmeasured. It depends on Layer 2 evaluation, which
+  depends on a seeded-failure test for Layer 1.
+- A rule that fires on nearly every station-day will quarantine nearly every
+  alert. Always check the `rule_id` histogram before quoting a quarantine rate
+  as a result — see the R6 episode in `docs/data-source.md`.
+- Public dashboard deploy still out of scope for this phase.
