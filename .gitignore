@@ -24,6 +24,15 @@ venv/
 models/*.pkl
 models/*.joblib
 
+# Terraform — state can contain resource metadata, tfvars can contain account detail
+# (.terraform.lock.hcl is intentionally NOT ignored — commit it so everyone
+# resolves identical provider versions.)
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+crash.log
+
 # OS / editor
 .DS_Store
 .vscode/

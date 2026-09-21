@@ -20,13 +20,19 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from dashboard.data import (STATUS_COLORS, available_dates,
-                            build_station_status, load_dashboard_frames,
-                            load_stations)
+from dashboard.data import (  # noqa: E402 — needs ROOT on sys.path first
+    STATUS_COLORS,
+    available_dates,
+    build_station_status,
+    filter_by_date,
+    load_dashboard_frames,
+    load_stations,
+)
+from pipelines.config import load_settings  # noqa: E402
 
 st.set_page_config(page_title="DataGuard", page_icon="🛡️", layout="wide")
 
-DISPLAY_COLS = [
+ALERT_COLUMNS = [
     "status",
     "trust_score",
     "rank",
@@ -44,30 +50,42 @@ DISPLAY_COLS = [
     "weak_label",
 ]
 
-STATUS_HEX = {
-    "escalated": "#e63946",
-    "quarantined": "#f4a261",
-    "quality_only": "#7b61ff",
-    "monitored": "#2a9d8f",
-}
+INCIDENT_COLUMNS = [
+    "locationid",
+    "date_local",
+    "rule_id",
+    "incident_type",
+    "severity",
+    "event_code",
+    "source",
+]
+
+MAP_COLUMNS = [
+    "locationid",
+    "location_name",
+    "latitude",
+    "longitude",
+    "status",
+    "date_local",
+    "trust_score",
+    "max_severity",
+    "incident_rule_ids",
+]
+
+LEGEND = """
+**Legend**
+- <span style="color:#e63946">●</span> **escalated** — trusted pollution alert
+- <span style="color:#f4a261">●</span> **quarantined** — alert + data-health incident (always shown)
+- <span style="color:#7b61ff">●</span> **quality_only** — Layer 1 incident, no fusion alert
+- <span style="color:#2a9d8f">●</span> **monitored** — healthy / no active signal
+"""
 
 
-def _filter_frame(
-    frame: pd.DataFrame,
-    as_of_date: str | None,
-    all_dates: bool,
-) -> pd.DataFrame:
-    if frame is None or frame.empty or all_dates or not as_of_date:
-        return frame if frame is not None else pd.DataFrame()
-    if "date_local" not in frame.columns:
-        return frame
-    return frame[frame["date_local"].astype(str) == str(as_of_date)].copy()
-
-
-def _rgb_list(color) -> list[int]:
-    if isinstance(color, list):
-        return [int(c) for c in color]
-    return list(STATUS_COLORS["monitored"])
+def _show(frame: pd.DataFrame, columns: list[str], sort_by: str | None = None) -> None:
+    view = frame[[c for c in columns if c in frame.columns]]
+    if sort_by and sort_by in view.columns:
+        view = view.sort_values(sort_by, ascending=False)
+    st.dataframe(view, use_container_width=True)
 
 
 st.title("DataGuard")
@@ -75,71 +93,38 @@ st.caption("Trust-aware anomaly detection for global air quality data (OpenAQ)")
 
 with st.sidebar:
     st.header("Data roots")
-    bronze_root = Path(
-        st.text_input("Bronze root", value=str(ROOT / "data" / "bronze"))
-    )
-    gold_root = Path(
-        st.text_input("Gold root", value=str(ROOT / "data" / "gold"))
-    )
+    st.caption("A local directory or an s3:// prefix.")
+    settings = load_settings()
+    silver_root = st.text_input("Silver root", value=settings.silver_root)
+    gold_root = st.text_input("Gold root", value=settings.gold_root)
 
     frames = load_dashboard_frames(gold_root)
-    metrics = frames["metrics"]
-    incidents = frames["incidents"]
-    fused = frames["trust_alerts"]
-    stations = load_stations(bronze_root)
-
-    dates = available_dates(metrics, incidents, fused)
+    metrics, incidents, fused = frames["metrics"], frames["incidents"], frames["trust_alerts"]
+    stations = load_stations(silver_root)
 
     st.header("As-of date")
+    dates = available_dates(metrics, incidents, fused)
     if dates:
-        as_of_date = st.selectbox(
-            "Station-day",
-            options=dates,
-            index=len(dates) - 1,
-        )
-        all_dates = st.checkbox(
-            "Show all dates in tables",
-            value=False,
-        )
+        as_of_date = st.selectbox("Station-day", options=dates, index=len(dates) - 1)
+        show_all_dates = st.checkbox("Show all dates in tables", value=False)
     else:
-        as_of_date = None
-        all_dates = True
+        as_of_date, show_all_dates = None, True
         st.caption("No gold dates yet — run quality / detect / fuse.")
 
-    station_status = build_station_status(
-        stations,
-        incidents,
-        fused,
-        as_of_date=as_of_date,
-    )
+    station_status = build_station_status(stations, incidents, fused, as_of_date=as_of_date)
 
     st.header("KPIs")
-    n_stations = len(stations)
+    statuses = station_status["status"] if not station_status.empty else pd.Series(dtype=str)
+    st.metric("Stations", len(stations))
+    st.metric("Escalated (map)", int((statuses == "escalated").sum()))
+    st.metric("Quarantined (map)", int((statuses == "quarantined").sum()))
+    st.metric("L1 incidents (day)", len(filter_by_date(incidents, as_of_date)))
 
-    n_escalated = (
-        int((station_status["status"] == "escalated").sum())
-        if not station_status.empty
-        else 0
-    )
-
-    n_quarantined = (
-        int((station_status["status"] == "quarantined").sum())
-        if not station_status.empty
-        else 0
-    )
-
-    day_incidents = _filter_frame(
-        incidents,
-        as_of_date,
-        all_dates=False,
-    )
-
-    n_quality = len(day_incidents) if not day_incidents.empty else 0
-
-    st.metric("Stations", n_stations)
-    st.metric("Escalated (map)", n_escalated)
-    st.metric("Quarantined (map)", n_quarantined)
-    st.metric("L1 incidents (day)", n_quality)
+# The sidebar filters to one day; the tables optionally show the whole history.
+table_date = None if show_all_dates else as_of_date
+fused_view = filter_by_date(fused, table_date)
+metrics_view = filter_by_date(metrics, table_date)
+incidents_view = filter_by_date(incidents, table_date)
 
 
 tab_alerts, tab_quality, tab_map = st.tabs(
@@ -150,17 +135,12 @@ tab_alerts, tab_quality, tab_map = st.tabs(
     ]
 )
 
-fused_view = _filter_frame(fused, as_of_date, all_dates)
-metrics_view = _filter_frame(metrics, as_of_date, all_dates)
-incidents_view = _filter_frame(incidents, as_of_date, all_dates)
-
-
 with tab_alerts:
     if fused_view.empty:
         st.info(
             "No fused alerts yet. Run: `python -m pipelines quality` → "
             "`python -m pipelines detect` → `python -m pipelines fuse` "
-            "(Layer 2 ensemble needs ≥20 feature rows before alerts exist)."
+            "(the Layer 2 ensemble needs ≥20 feature rows before alerts exist)."
         )
 
     else:
@@ -366,41 +346,19 @@ with tab_alerts:
                     "incident_rule_ids",
                 ]
 
-                station_cols = [
-                    col
-                    for col in station_cols
-                    if col in station_history.columns
-                ]
-
-                st.dataframe(
-                    station_history[station_cols],
-                    use_container_width=True,
-                    hide_index=True,
-                )
+                _show(station_history, station_cols)
 
             else:
                 st.caption(
                     "No stations with fusion alerts are available."
                 )
 
-        cols = [
-            c
-            for c in DISPLAY_COLS
-            if c in fused_view.columns
-        ]
-
         st.subheader("Escalated")
 
         if escalated.empty:
             st.caption("No escalated alerts.")
         else:
-            st.dataframe(
-                escalated[cols].sort_values(
-                    "trust_score",
-                    ascending=False,
-                ),
-                use_container_width=True,
-            )
+            _show(escalated, ALERT_COLUMNS, sort_by="trust_score")
 
         st.subheader(
             "Quarantined (for review — never deleted)"
@@ -409,18 +367,11 @@ with tab_alerts:
         if quarantined.empty:
             st.caption("No quarantined alerts.")
         else:
-            st.dataframe(
-                quarantined[cols].sort_values(
-                    "trust_score",
-                    ascending=False,
-                ),
-                use_container_width=True,
-            )
+            _show(quarantined, ALERT_COLUMNS, sort_by="trust_score")
 
         st.caption(
             "Station colors for these alerts appear on the Station map tab."
         )
-
 
 with tab_quality:
     if metrics_view.empty:
@@ -443,155 +394,66 @@ with tab_quality:
 
         if not incidents_view.empty:
             st.subheader("Quality incidents")
-
-            st.dataframe(
-                incidents_view[
-                    [
-                        "locationid",
-                        "date_local",
-                        "rule_id",
-                        "incident_type",
-                        "severity",
-                        "event_code",
-                        "source",
-                    ]
-                ],
-                use_container_width=True,
-            )
-
-            st.bar_chart(
-                incidents_view["rule_id"].value_counts()
-            )
-
+            _show(incidents_view, INCIDENT_COLUMNS)
+            st.bar_chart(incidents_view["rule_id"].value_counts())
 
 with tab_map:
-    st.markdown(
-        """
-**Legend**
-- <span style="color:#e63946">●</span> **escalated** — trusted pollution alert
-- <span style="color:#f4a261">●</span> **quarantined** — alert + data-health incident (always shown)
-- <span style="color:#7b61ff">●</span> **quality_only** — Layer 1 incident, no fusion alert
-- <span style="color:#2a9d8f">●</span> **monitored** — healthy / no active signal
-""",
-        unsafe_allow_html=True,
-    )
+    st.markdown(LEGEND, unsafe_allow_html=True)
 
-    if stations.empty:
+    map_df = station_status.copy()
+    if not map_df.empty:
+        map_df["latitude"] = pd.to_numeric(map_df["latitude"], errors="coerce")
+        map_df["longitude"] = pd.to_numeric(map_df["longitude"], errors="coerce")
+        map_df = map_df.dropna(subset=["latitude", "longitude"])
+
+    if map_df.empty:
         st.warning(
-            "No station coordinates found. Ingest bronze and ensure "
-            "`python -m pipelines` can read conformed lat/lon "
-            f"(bronze root: `{bronze_root}`)."
+            "No mappable stations. Build the silver zone first: "
+            f"`python -m pipelines conform` (silver root: `{silver_root}`)."
         )
-
-    elif station_status.empty:
-        st.warning(
-            "Stations loaded but no mappable rows after status join."
-        )
-
     else:
-        map_df = station_status.copy()
-
+        fallback = STATUS_COLORS["monitored"]
         map_df["color"] = map_df["color"].apply(
-            _rgb_list
+            lambda c: [int(v) for v in c] if isinstance(c, (list, tuple)) else fallback
         )
-
-        map_df["lat"] = pd.to_numeric(
-            map_df["lat"],
-            errors="coerce",
+        layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=map_df,
+            get_position="[longitude, latitude]",
+            get_fill_color="color",
+            get_radius=2500,
+            radius_min_pixels=8,
+            radius_max_pixels=24,
+            pickable=True,
         )
-
-        map_df["lon"] = pd.to_numeric(
-            map_df["lon"],
-            errors="coerce",
+        view = pdk.ViewState(
+            latitude=float(map_df["latitude"].mean()),
+            longitude=float(map_df["longitude"].mean()),
+            zoom=9,
         )
-
-        map_df = map_df.dropna(
-            subset=["lat", "lon"]
-        )
-
-        if map_df.empty:
-            st.warning(
-                "Stations have no valid lat/lon values."
-            )
-
-        else:
-            mid_lat = float(
-                map_df["lat"].mean()
-            )
-
-            mid_lon = float(
-                map_df["lon"].mean()
-            )
-
-            layer = pdk.Layer(
-                "ScatterplotLayer",
-                data=map_df,
-                get_position="[lon, lat]",
-                get_fill_color="color",
-                get_radius=2500,
-                radius_min_pixels=8,
-                radius_max_pixels=24,
-                pickable=True,
-            )
-
-            view = pdk.ViewState(
-                latitude=mid_lat,
-                longitude=mid_lon,
-                zoom=9,
-            )
-
-            tooltip = {
-                "html": (
-                    "<b>{location_name}</b> ({locationid})<br/>"
-                    "status: {status}<br/>"
-                    "date: {date_local}<br/>"
-                    "trust: {trust_score}<br/>"
-                    "rules: {incident_rule_ids}"
-                ),
-                "style": {
-                    "backgroundColor": "#111",
-                    "color": "white",
+        st.pydeck_chart(
+            pdk.Deck(
+                layers=[layer],
+                initial_view_state=view,
+                tooltip={
+                    "html": (
+                        "<b>{location_name}</b> ({locationid})<br/>"
+                        "status: {status}<br/>"
+                        "date: {date_local}<br/>"
+                        "trust: {trust_score}<br/>"
+                        "rules: {incident_rule_ids}"
+                    ),
+                    "style": {"backgroundColor": "#111", "color": "white"},
                 },
-            }
+            ),
+            use_container_width=True,
+        )
 
-            st.pydeck_chart(
-                pdk.Deck(
-                    layers=[layer],
-                    initial_view_state=view,
-                    tooltip=tooltip,
-                ),
-                use_container_width=True,
+        if fused.empty:
+            st.caption(
+                "Fusion alerts empty — the map shows monitored stations and "
+                "Layer 1 quality signals only."
             )
 
-            if fused.empty:
-                st.caption(
-                    "Fusion alerts empty — map shows monitored stations and "
-                    "Layer 1 quality signals only."
-                )
-
-            table_cols = [
-                "locationid",
-                "location_name",
-                "lat",
-                "lon",
-                "status",
-                "date_local",
-                "trust_score",
-                "max_severity",
-                "incident_rule_ids",
-            ]
-
-            st.subheader("Stations")
-
-            display = map_df[
-                [
-                    c
-                    for c in table_cols
-                    if c in map_df.columns
-                ]
-            ].copy()
-
-            st.dataframe(
-                display,
-                use_container_width=True,
-            )
+        st.subheader("Stations")
+        _show(map_df, MAP_COLUMNS)
