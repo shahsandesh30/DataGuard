@@ -1,4 +1,4 @@
-"""Dashboard data loaders: station geo + Layer 1 / fusion status joins."""
+"""Dashboard data loaders: station geography joined to Layer 1 / fusion status."""
 
 from __future__ import annotations
 
@@ -6,17 +6,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from pipelines.conformance.conform import read_conformed
-from pipelines.detection.build import read_event_alerts
-from pipelines.fusion.build import read_trust_alerts
+from pipelines.conformance.conform import read_silver
+from pipelines.fusion.build import read_event_alerts, read_trust_alerts
 from pipelines.quality.build import read_quality_incidents, read_quality_metrics
 
-STATUS_PRIORITY = {
-    "escalated": 0,
-    "quarantined": 1,
-    "quality_only": 2,
-    "monitored": 3,
-}
+STATION_COLUMNS = ["locationid", "location_name", "latitude", "longitude"]
 
 STATUS_COLORS = {
     "escalated": [230, 57, 70],
@@ -25,37 +19,37 @@ STATUS_COLORS = {
     "monitored": [42, 157, 143],
 }
 
+# Lower sorts first on the map table — worst news at the top.
+STATUS_PRIORITY = {"escalated": 0, "quarantined": 1, "quality_only": 2, "monitored": 3}
 
-def load_stations(bronze_root: Path | None = None) -> pd.DataFrame:
-    """One row per locationid with median lat/lon and a display name."""
-    conformed = read_conformed(bronze_root)
-    if conformed is None or conformed.empty:
-        return pd.DataFrame(columns=["locationid", "location_name", "latitude", "longitude"])
+_SEVERITY_RANK = {"high": 3, "medium": 2, "low": 1}
 
-    frame = conformed.copy()
-    frame["locationid"] = frame["locationid"].astype(int)
-    frame["latitude"] = pd.to_numeric(frame["latitude"], errors="coerce")
-    frame["longitude"] = pd.to_numeric(frame["longitude"], errors="coerce")
-    frame = frame.dropna(subset=["latitude", "longitude"])
+
+def load_stations(silver_root: str | Path | None = None) -> pd.DataFrame:
+    """One row per locationid with median coordinates and a display name."""
+    silver = read_silver(silver_root)
+    if silver.empty:
+        return pd.DataFrame(columns=STATION_COLUMNS)
+
+    frame = silver.astype({"locationid": int}).dropna(subset=["latitude", "longitude"])
     if frame.empty:
-        return pd.DataFrame(columns=["locationid", "location_name", "latitude", "longitude"])
+        return pd.DataFrame(columns=STATION_COLUMNS)
 
-    rows: list[dict] = []
-    for locationid, group in frame.groupby("locationid", sort=False):
-        names = group["location_name"].dropna().astype(str)
-        name = names.mode().iloc[0] if not names.empty else str(locationid)
-        rows.append(
-            {
-                "locationid": int(locationid),
-                "location_name": name,
-                "latitude": float(group["latitude"].median()),
-                "longitude": float(group["longitude"].median()),
-            }
-        )
-    return pd.DataFrame(rows)
+    grouped = frame.groupby("locationid", sort=False)
+    stations = pd.DataFrame(
+        {
+            "location_name": grouped["location_name"].agg(
+                lambda names: names.mode().iloc[0] if not names.mode().empty else ""
+            ),
+            "latitude": grouped["latitude"].median(),
+            "longitude": grouped["longitude"].median(),
+        }
+    ).reset_index()
+    stations["location_name"] = stations["location_name"].astype(str)
+    return stations.loc[:, STATION_COLUMNS]
 
 
-def load_dashboard_frames(gold_root: Path | None = None) -> dict[str, pd.DataFrame]:
+def load_dashboard_frames(gold_root: str | Path | None = None) -> dict[str, pd.DataFrame]:
     return {
         "metrics": read_quality_metrics(gold_root),
         "incidents": read_quality_incidents(gold_root),
@@ -67,21 +61,66 @@ def load_dashboard_frames(gold_root: Path | None = None) -> dict[str, pd.DataFra
 def available_dates(*frames: pd.DataFrame) -> list[str]:
     dates: set[str] = set()
     for frame in frames:
-        if frame is None or frame.empty or "date_local" not in frame.columns:
-            continue
-        dates.update(frame["date_local"].astype(str).unique())
+        if frame is not None and not frame.empty and "date_local" in frame.columns:
+            dates.update(frame["date_local"].astype(str).unique())
     return sorted(dates)
 
 
-def _filter_by_date(frame: pd.DataFrame, as_of_date: str | None) -> pd.DataFrame:
-    if frame is None or frame.empty or not as_of_date or "date_local" not in frame.columns:
-        return frame if frame is not None else pd.DataFrame()
+def filter_by_date(frame: pd.DataFrame, as_of_date: str | None) -> pd.DataFrame:
+    """Restrict a frame to one station-day. ``None`` means no filtering."""
+    if frame is None:
+        return pd.DataFrame()
+    if frame.empty or not as_of_date or "date_local" not in frame.columns:
+        return frame
     return frame[frame["date_local"].astype(str) == str(as_of_date)].copy()
 
 
-def _severity_rank(value: str) -> int:
-    order = {"high": 3, "medium": 2, "low": 1}
-    return order.get(str(value).lower(), 0)
+def _incident_summary(day_incidents: pd.DataFrame) -> pd.DataFrame:
+    """One row per station: worst severity and the rules that fired."""
+    columns = ["locationid", "has_quality_incident", "max_severity", "incident_rule_ids"]
+    if day_incidents.empty:
+        return pd.DataFrame(columns=columns)
+
+    rows = []
+    for locationid, group in day_incidents.groupby("locationid", sort=False):
+        severities = group["severity"].dropna().astype(str).str.lower()
+        rows.append(
+            {
+                "locationid": int(locationid),
+                "has_quality_incident": True,
+                "max_severity": max(severities, key=lambda s: _SEVERITY_RANK.get(s, 0))
+                if not severities.empty
+                else "",
+                "incident_rule_ids": ",".join(
+                    sorted({str(r) for r in group["rule_id"].dropna().unique()})
+                ),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _alert_summary(day_alerts: pd.DataFrame) -> pd.DataFrame:
+    """One row per station: fusion status, escalated winning over quarantined."""
+    columns = ["locationid", "fusion_status", "trust_score"]
+    if day_alerts.empty:
+        return pd.DataFrame(columns=columns)
+
+    rows = []
+    for locationid, group in day_alerts.groupby("locationid", sort=False):
+        statuses = set(group["status"].astype(str))
+        status = next(
+            (s for s in ("escalated", "quarantined") if s in statuses),
+            str(group.iloc[0]["status"]),
+        )
+        subset = group[group["status"].astype(str) == status]
+        rows.append(
+            {
+                "locationid": int(locationid),
+                "fusion_status": status,
+                "trust_score": float(subset["trust_score"].max()),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
 
 
 def build_station_status(
@@ -91,114 +130,40 @@ def build_station_status(
     *,
     as_of_date: str | None = None,
 ) -> pd.DataFrame:
-    """Join stations to L1/fusion signals and assign map status."""
+    """Join stations to Layer 1 and fusion signals and assign a map status."""
+    columns = [
+        *STATION_COLUMNS,
+        "status",
+        "date_local",
+        "trust_score",
+        "max_severity",
+        "incident_rule_ids",
+        "color",
+    ]
     if stations is None or stations.empty:
-        return pd.DataFrame(
-            columns=[
-                "locationid",
-                "location_name",
-                "latitude",
-                "longitude",
-                "status",
-                "date_local",
-                "trust_score",
-                "max_severity",
-                "incident_rule_ids",
-                "color",
-            ]
-        )
+        return pd.DataFrame(columns=columns)
 
     if as_of_date is None:
         dates = available_dates(incidents, trust_alerts)
         as_of_date = dates[-1] if dates else None
 
-    day_incidents = _filter_by_date(incidents, as_of_date)
-    day_alerts = _filter_by_date(trust_alerts, as_of_date)
-
-    incident_rows: list[dict] = []
-    if not day_incidents.empty:
-        for locationid, group in day_incidents.groupby("locationid", sort=False):
-            rule_ids = sorted({str(r) for r in group["rule_id"].dropna().unique()})
-            severities = group["severity"].dropna().astype(str)
-            max_sev = ""
-            if not severities.empty:
-                max_sev = max(severities, key=_severity_rank)
-            incident_rows.append(
-                {
-                    "locationid": int(locationid),
-                    "has_quality_incident": True,
-                    "max_severity": max_sev.lower() if max_sev else "",
-                    "incident_rule_ids": ",".join(rule_ids),
-                }
-            )
-    incident_summary = pd.DataFrame(incident_rows)
-
-    alert_rows: list[dict] = []
-    if not day_alerts.empty:
-        for locationid, group in day_alerts.groupby("locationid", sort=False):
-            # Prefer escalated over quarantined when both exist for the station-day.
-            statuses = set(group["status"].astype(str))
-            if "escalated" in statuses:
-                fusion_status = "escalated"
-                subset = group[group["status"] == "escalated"]
-            elif "quarantined" in statuses:
-                fusion_status = "quarantined"
-                subset = group[group["status"] == "quarantined"]
-            else:
-                fusion_status = str(group.iloc[0]["status"])
-                subset = group
-            alert_rows.append(
-                {
-                    "locationid": int(locationid),
-                    "fusion_status": fusion_status,
-                    "trust_score": float(subset["trust_score"].max()),
-                }
-            )
-    alert_summary = pd.DataFrame(alert_rows)
-
     result = stations.copy()
     result["locationid"] = result["locationid"].astype(int)
-    if not incident_summary.empty:
-        result = result.merge(incident_summary, on="locationid", how="left")
-    else:
-        result["has_quality_incident"] = False
-        result["max_severity"] = ""
-        result["incident_rule_ids"] = ""
+    result = result.merge(
+        _incident_summary(filter_by_date(incidents, as_of_date)), on="locationid", how="left"
+    ).merge(_alert_summary(filter_by_date(trust_alerts, as_of_date)), on="locationid", how="left")
 
-    if not alert_summary.empty:
-        result = result.merge(alert_summary, on="locationid", how="left")
-    else:
-        result["fusion_status"] = pd.NA
-        result["trust_score"] = pd.NA
+    result["has_quality_incident"] = result["has_quality_incident"].fillna(False).astype(bool)
+    result["max_severity"] = result["max_severity"].fillna("").astype(str)
+    result["incident_rule_ids"] = result["incident_rule_ids"].fillna("").astype(str)
 
-    result["has_quality_incident"] = result.get(
-        "has_quality_incident", pd.Series(False, index=result.index)
+    # A fusion alert always wins; a Layer 1 incident on its own is quality_only.
+    result["status"] = result["fusion_status"].where(
+        result["fusion_status"].notna(),
+        result["has_quality_incident"].map({True: "quality_only", False: "monitored"}),
     )
-    result["has_quality_incident"] = result["has_quality_incident"].where(
-        result["has_quality_incident"].notna(), False
-    ).astype(bool)
-    result["max_severity"] = result.get("max_severity", pd.Series("", index=result.index))
-    result["max_severity"] = result["max_severity"].where(result["max_severity"].notna(), "").astype(str)
-    result["incident_rule_ids"] = result.get(
-        "incident_rule_ids", pd.Series("", index=result.index)
-    )
-    result["incident_rule_ids"] = result["incident_rule_ids"].where(
-        result["incident_rule_ids"].notna(), ""
-    ).astype(str)
-
-    statuses: list[str] = []
-    for _, row in result.iterrows():
-        fusion = row.get("fusion_status")
-        if pd.notna(fusion) and str(fusion) == "escalated":
-            statuses.append("escalated")
-        elif pd.notna(fusion) and str(fusion) == "quarantined":
-            statuses.append("quarantined")
-        elif bool(row.get("has_quality_incident")):
-            statuses.append("quality_only")
-        else:
-            statuses.append("monitored")
-    result["status"] = statuses
     result["date_local"] = as_of_date or ""
     result["color"] = result["status"].map(STATUS_COLORS)
-    result["priority"] = result["status"].map(STATUS_PRIORITY).fillna(99)
-    return result.sort_values(["priority", "locationid"]).drop(columns=["priority"])
+
+    order = result["status"].map(STATUS_PRIORITY).fillna(99)
+    return result.assign(_order=order).sort_values(["_order", "locationid"]).drop(columns="_order")
