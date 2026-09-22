@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-
+import logging
 import numpy as np
 import pandas as pd
 
@@ -22,7 +22,9 @@ from pipelines.detection.baseline import (
     trailing_stats,
 )
 
-EVENT_FEATURE_COLUMNS = [
+logger = logging.getLogger(__name__)
+
+_DAILY_FEATURE_COLUMNS = [
     "locationid",
     "date_local",
     "parameter",
@@ -41,7 +43,7 @@ EVENT_FEATURE_COLUMNS = [
     "pm_co_movement",
 ]
 
-FEATURE_MODEL_COLUMNS = [
+_DAILY_MODEL_COLUMNS = [
     "daily_mean",
     "daily_max",
     "z_score",
@@ -55,6 +57,25 @@ FEATURE_MODEL_COLUMNS = [
     "regional_agreement",
     "pm_co_movement",
 ]
+
+HOURLY_AGG_FEATURE_COLUMNS = [
+    "hourly_deviation_zscore_max",
+    "hourly_roll_std_24h_mean",
+    "hourly_rate_of_change_1h_max",
+    "hourly_sustained_elevated_hours_max",
+    "hourly_spatial_deviation_max",
+    "hourly_spatially_isolated_hours",
+    "hourly_regionally_coherent_hours",
+    "hourly_possible_humidity_artifact_hours",
+]
+ 
+# The single feature-matrix schema: every row build_event_features returns has
+# these columns, daily and hourly signals together. _empty_features() and
+# feature_snapshot() both key off this, so they need no separate change.
+EVENT_FEATURE_COLUMNS = _DAILY_FEATURE_COLUMNS + HOURLY_AGG_FEATURE_COLUMNS
+ 
+# What the ensemble trains and scores on: same idea, minus the identifier columns.
+FEATURE_MODEL_COLUMNS = _DAILY_MODEL_COLUMNS + HOURLY_AGG_FEATURE_COLUMNS
 
 BASELINE_MIN_SAMPLES = 8
 MIN_ROWS_PER_STATION_PARAMETER = 100
@@ -131,6 +152,271 @@ def _regional_agreement(
             elevated += 1
     return elevated / total if total else 0.0
 
+
+def _add_time_parts(df: pd.DataFrame) -> pd.DataFrame:
+    dt = df["datetime"]
+    df["hour"] = dt.dt.hour
+    df["dow"] = dt.dt.dayofweek
+    df["is_weekend"] = df["dow"].isin([5, 6]).astype(int)
+    df["month"] = dt.dt.month
+    # season keyed to Sydney (Southern Hemisphere)
+    df["season"] = df["month"] % 12 // 3 + 1  # 1=summer(DJF)...4=spring(SON) approx
+    df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
+    df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
+    return df
+ 
+ 
+def _drop_insufficient_stations(df: pd.DataFrame, min_rows: int) -> pd.DataFrame:
+    counts = df.groupby(["locationid", "parameter"]).size()
+    valid = counts[counts >= min_rows].index
+    mask = df.set_index(["locationid", "parameter"]).index.isin(valid)
+    dropped = df.loc[~mask, "locationid"].unique()
+    if len(dropped):
+        print(f"Dropping insufficient stations/parameters: {sorted(set(dropped))}")
+    return df.loc[mask].reset_index(drop=True)
+ 
+ 
+def _mad(series: pd.Series) -> float:
+    med = series.median()
+    return (series - med).abs().median()
+ 
+ 
+def _add_baseline_deviation(df: pd.DataFrame) -> pd.DataFrame:
+    """Diurnal baseline per (locationid, parameter, hour, is_weekend, season)
+    plus robust-z deviation of the observed value from that baseline.
+    """
+    group_keys = ["locationid", "parameter", "hour", "is_weekend", "season"]
+ 
+    baseline = (
+        df.groupby(group_keys)["value"]
+        .agg(
+            baseline_median="median",
+            baseline_n="count",
+            baseline_mad=_mad,
+        )
+        .reset_index()
+    )
+ 
+    insufficient = baseline["baseline_n"] < BASELINE_MIN_SAMPLES
+    baseline.loc[insufficient, ["baseline_median", "baseline_mad"]] = np.nan
+    df = df.merge(baseline, on=group_keys, how="left")
+    df["baseline_mad_scaled"] = (df["baseline_mad"] * MAD_TO_STD).replace(0, np.nan)
+    df["deviation"] = df["value"] - df["baseline_median"]
+    df["deviation_zscore"] = df["deviation"] / df["baseline_mad_scaled"]
+    return df
+ 
+ 
+def _run_length_above(s: pd.Series, thresh: float = 2.0) -> pd.Series:
+    above = (s > thresh).astype(int)
+    return above.groupby((above == 0).cumsum()).cumsum()
+ 
+ 
+def _add_rolling_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.sort_values(["locationid", "parameter", "datetime"])
+    grp = df.groupby(["locationid", "parameter"], group_keys=False)
+ 
+    df["rate_of_change_1h"] = grp["value"].diff()
+ 
+    for w in ROLLING_WINDOWS_HOURS:
+        df[f"roll_mean_{w}h"] = grp["value"].transform(
+            lambda s, window=w: s.rolling(window, min_periods=max(2, window // 2)).mean()
+        )
+        df[f"roll_std_{w}h"] = grp["value"].transform(
+            lambda s, window=w: s.rolling(window, min_periods=max(2, window // 2)).std()
+        )
+ 
+    df["sustained_elevated_hours"] = grp["deviation_zscore"].transform(_run_length_above)
+    return df
+ 
+ 
+def _haversine_km(lat1, lon1, lat2, lon2) -> np.ndarray:
+    r = 6371.0
+    lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
+    dlat, dlon = lat2 - lat1, lon2 - lon1
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    return 2 * r * np.arcsin(np.sqrt(a))
+ 
+ 
+def _build_knn_table(df: pd.DataFrame, k: int) -> pd.DataFrame:
+    stations = df[["locationid", "latitude", "longitude"]].drop_duplicates("locationid")
+    pairs = stations.merge(stations, how="cross", suffixes=("", "_nbr"))
+    pairs = pairs[pairs["locationid"] != pairs["locationid_nbr"]]
+    pairs["distance_km"] = _haversine_km(
+        pairs["latitude"], pairs["longitude"], pairs["latitude_nbr"], pairs["longitude_nbr"]
+    )
+    pairs = pairs.sort_values(["locationid", "distance_km"])
+    knn = pairs.groupby("locationid").head(k)
+    return knn[["locationid", "locationid_nbr", "distance_km"]].reset_index(drop=True)
+ 
+ 
+def _add_spatial_features(df: pd.DataFrame, knn: pd.DataFrame) -> pd.DataFrame:
+    small = df[["locationid", "parameter", "datetime", "value", "deviation_zscore"]]
+ 
+    pairs = knn.merge(small, on="locationid", how="inner")
+    pairs = pairs.rename(columns={"value": "value_self", "deviation_zscore": "zscore_self"})
+    nbr_vals = small.rename(
+        columns={"locationid": "locationid_nbr", "value": "value_nbr", "deviation_zscore": "zscore_nbr"}
+    )
+    pairs = pairs.merge(nbr_vals, on=["locationid_nbr", "parameter", "datetime"], how="inner")
+ 
+    agg = (
+        pairs.groupby(["locationid", "parameter", "datetime"])
+        .agg(
+            n_neighbors=("locationid_nbr", "nunique"),
+            nearest_neighbor_km=("distance_km", "min"),
+            neighbor_mean_value=("value_nbr", "mean"),
+            neighbor_mean_zscore=("zscore_nbr", "mean"),
+            neighbor_frac_elevated=("zscore_nbr", lambda s: (s > 2).mean()),
+        )
+        .reset_index()
+    )
+ 
+    df = df.merge(agg, on=["locationid", "parameter", "datetime"], how="left")
+    df["spatial_deviation"] = df["value"] - df["neighbor_mean_value"]
+    df["spatially_isolated"] = (
+        (df["deviation_zscore"] > 2) & (df["neighbor_frac_elevated"].fillna(0) < 0.3)
+    ).astype(int)
+    df["regionally_coherent"] = (
+        (df["deviation_zscore"] > 2) & (df["neighbor_frac_elevated"].fillna(0) >= 0.5)
+    ).astype(int)
+    return df
+ 
+ 
+def _add_cross_parameter_features(df: pd.DataFrame) -> pd.DataFrame:
+    wide_z = df.pivot_table(
+        index=["locationid", "datetime"], columns="parameter", values="deviation_zscore"
+    )
+    wide_val = df.pivot_table(
+        index=["locationid", "datetime"], columns="parameter", values="value"
+    )
+ 
+    cross = pd.DataFrame(index=wide_z.index)
+ 
+    if {"pm1", "pm25"}.issubset(wide_z.columns):
+        cross["pm1_pm25_comovement"] = wide_z[["pm1", "pm25"]].min(axis=1)
+ 
+    if {"um003", "pm25"}.issubset(wide_z.columns):
+        cross["particle_pm25_comovement"] = wide_z[["um003", "pm25"]].min(axis=1)
+ 
+    if "relativehumidity" in wide_val.columns:
+        cross["humidity_pct"] = wide_val["relativehumidity"]
+        cross["high_humidity_flag"] = (wide_val["relativehumidity"] > HIGH_HUMIDITY_PCT).astype(int)
+ 
+        if {"pm25", "um003"}.issubset(wide_z.columns):
+            cross["possible_humidity_artifact"] = (
+                (wide_z["pm25"] > 2)
+                & (wide_val["relativehumidity"] > HIGH_HUMIDITY_PCT)
+                & (wide_z["um003"] <= 1)
+            ).astype(int)
+ 
+    if "temperature" in wide_val.columns:
+        cross["temperature_c"] = wide_val["temperature"]
+ 
+    if cross.empty:
+        return df
+ 
+    cross = cross.reset_index()
+    df = df.merge(cross, on=["locationid", "datetime"], how="left")
+    return df
+ 
+ 
+HOURLY_REQUIRED_COLUMNS = ["locationid", "datetime", "parameter", "value", "latitude", "longitude"]
+ 
+ 
+def build_hourly_event_features(silver: pd.DataFrame) -> pd.DataFrame:
+    """Hourly features from Athena silver (`locationid`, `datetime`, lat/lon).
+ 
+    Independent of :func:`build_event_features` (which works per station-day).
+    Expects a datetime64 ``datetime`` column in local time and ``latitude`` /
+    ``longitude`` columns (``lat`` / ``lon`` are accepted). Returns the input rows
+    plus time, baseline-deviation, rolling, spatial and cross-parameter columns.
+    """
+    if silver is None or silver.empty:
+        return pd.DataFrame(columns=HOURLY_REQUIRED_COLUMNS)
+ 
+    df = silver.copy()
+    if "latitude" not in df.columns and {"lat", "lon"}.issubset(df.columns):
+        df = df.rename(columns={"lat": "latitude", "lon": "longitude"})
+    missing = [col for col in HOURLY_REQUIRED_COLUMNS if col not in df.columns]
+    if missing:
+        raise ValueError(f"silver is missing required columns: {missing}")
+ 
+    df["parameter"] = df["parameter"].str.lower()
+    df = df.sort_values(["locationid", "parameter", "datetime"])
+ 
+    # The spatial step merges on (locationid, parameter, datetime); duplicates would multiply rows.
+    before = len(df)
+    df = df.drop_duplicates(["locationid", "parameter", "datetime"], keep="last")
+    if len(df) < before:
+        print(f"Dropping {before - len(df)} duplicate (locationid, parameter, datetime) rows")
+ 
+    print("Building event features...")
+    print(f"\nInitial silver data shape: {df.shape[0]} rows, {df.shape[1]} columns")
+ 
+    print(f"\nDropping stations with < {MIN_ROWS_PER_STATION_PARAMETER} rows per parameter...")
+    df = _drop_insufficient_stations(df, MIN_ROWS_PER_STATION_PARAMETER)
+    if df.empty:
+        return pd.DataFrame(columns=HOURLY_REQUIRED_COLUMNS)
+ 
+    print("\nAdding time parts...")
+    df = _add_time_parts(df)
+ 
+    print("\nAdding baseline deviation features...")
+    df = _add_baseline_deviation(df)
+ 
+    print("\nAdding rolling features...")
+    df = _add_rolling_features(df)
+ 
+    print("\nAdding spatial features...")
+    knn = _build_knn_table(df, NEIGHBOR_K)
+    df = _add_spatial_features(df, knn)
+ 
+    print("\nAdding cross-parameter features...")
+    df = _add_cross_parameter_features(df)
+ 
+    return df
+ 
+ 
+# ---------------------------------------------------------------------------
+# Aggregation used by build_event_features, above, to fold same-day hourly
+# signals (from build_hourly_event_features, below) into its output.
+# ---------------------------------------------------------------------------
+ 
+ 
+def _hourly_daily_aggregates(hourly: pd.DataFrame) -> pd.DataFrame:
+    """Collapse hourly feature rows to one row per (locationid, date_local, parameter)."""
+    key = ["locationid", "date_local", "parameter"]
+    empty = pd.DataFrame(columns=[*key, *HOURLY_AGG_FEATURE_COLUMNS])
+    if hourly.empty:
+        return empty
+ 
+    hourly = hourly.copy()
+    if "date_local" not in hourly.columns:
+        # Falls back to the calendar date of the (local) datetime column; if your
+        # date_local elsewhere is defined differently, derive it the same way here.
+        hourly["date_local"] = hourly["datetime"].dt.strftime("%Y-%m-%d")
+ 
+    have = lambda col: col in hourly.columns  # noqa: E731 — small local check, used once below
+    if not all(have(c) for c in ("deviation_zscore", "roll_std_24h", "rate_of_change_1h")):
+        return empty  # baseline/rolling steps were skipped (e.g. too few rows per station)
+ 
+    agg = hourly.groupby(key).agg(
+        hourly_deviation_zscore_max=("deviation_zscore", "max"),
+        hourly_roll_std_24h_mean=("roll_std_24h", "mean"),
+        hourly_rate_of_change_1h_max=("rate_of_change_1h", "max"),
+        hourly_sustained_elevated_hours_max=("sustained_elevated_hours", "max"),
+    )
+ 
+    for col, source in [
+        ("hourly_spatial_deviation_max", "spatial_deviation"),
+        ("hourly_spatially_isolated_hours", "spatially_isolated"),
+        ("hourly_regionally_coherent_hours", "regionally_coherent"),
+        ("hourly_possible_humidity_artifact_hours", "possible_humidity_artifact"),
+    ]:
+        how = "max" if source == "spatial_deviation" else "sum"
+        agg[col] = hourly.groupby(key)[source].agg(how) if have(source) else 0.0
+ 
+    return agg.reset_index()
 
 def build_event_features(conformed: pd.DataFrame) -> pd.DataFrame:
     """Return station-day-parameter features for event detection."""
@@ -213,7 +499,25 @@ def build_event_features(conformed: pd.DataFrame) -> pd.DataFrame:
             }
         )
 
-    return pd.DataFrame(rows, columns=EVENT_FEATURE_COLUMNS)
+    daily = pd.DataFrame(rows, columns=_DAILY_FEATURE_COLUMNS)
+    has_coords = {"latitude", "longitude"}.issubset(conformed.columns) or {
+        "lat", "lon",
+    }.issubset(conformed.columns)
+    if has_coords:
+        hourly = build_hourly_event_features(conformed)
+        hourly_daily = _hourly_daily_aggregates(hourly)
+    else:
+        logger.warning(
+            "conformed has no latitude/longitude — hourly features left at 0.0"
+        )
+        hourly_daily = pd.DataFrame(
+            columns=["locationid", "date_local", "parameter", *HOURLY_AGG_FEATURE_COLUMNS]
+        )
+    combined = daily.merge(
+        hourly_daily, on=["locationid", "date_local", "parameter"], how="left"
+    )
+    combined[HOURLY_AGG_FEATURE_COLUMNS] = combined[HOURLY_AGG_FEATURE_COLUMNS].fillna(0.0)
+    return combined[EVENT_FEATURE_COLUMNS]
 
 
 def _elevated_location_count(
@@ -285,202 +589,3 @@ def weak_labels(features: pd.DataFrame, conformed: pd.DataFrame | None = None) -
 def feature_snapshot(row: pd.Series) -> str:
     payload = {col: row[col] for col in EVENT_FEATURE_COLUMNS if col in row.index}
     return json.dumps(payload, default=str)
-
-# Extra part for feature engineering (maybe redundant)
-
-# def _add_time_parts(df: pd.DataFrame) -> pd.DataFrame:
-#     dt = df["datetime"]
-#     df["hour"] = dt.dt.hour
-#     df["dow"] = dt.dt.dayofweek
-#     df["is_weekend"] = df["dow"].isin([5, 6]).astype(int)
-#     df["month"] = dt.dt.month
-#     # season keyed to Sydney (Southern Hemisphere)
-#     df["season"] = df["month"] % 12 // 3 + 1  # 1=summer(DJF)...4=spring(SON) approx
-#     df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
-#     df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
-#     return df
-
-
-# def _drop_insufficient_stations(df: pd.DataFrame, min_rows: int) -> pd.DataFrame:
-#     counts = df.groupby(["locationid", "parameter"]).size()
-#     valid = counts[counts >= min_rows].index
-#     mask = df.set_index(["locationid", "parameter"]).index.isin(valid)
-#     dropped = df.loc[~mask, "locationid"].unique()
-#     if len(dropped):
-#         print(f"Dropping insufficient stations/parameters: {sorted(set(dropped))}")
-#     return df.loc[mask].reset_index(drop=True)
-
-
-# def _mad(series: pd.Series) -> float:
-#     med = series.median()
-#     return (series - med).abs().median()
-
-
-# def _add_baseline_deviation(df: pd.DataFrame) -> pd.DataFrame:
-#     """Diurnal baseline per (locationid, parameter, hour, is_weekend, season)
-#     plus robust-z deviation of the observed value from that baseline.
-#     """
-#     group_keys = ["locationid", "parameter", "hour", "is_weekend", "season"]
-
-#     baseline = (
-#         df.groupby(group_keys)["value"]
-#         .agg(
-#             baseline_median="median",
-#             baseline_n="count",
-#             baseline_mad=_mad,
-#         )
-#         .reset_index()
-#     )
-
-#     insufficient = baseline["baseline_n"] < BASELINE_MIN_SAMPLES
-#     baseline.loc[insufficient, ["baseline_median", "baseline_mad"]] = np.nan
-#     df = df.merge(baseline, on=group_keys, how="left")
-#     df["baseline_mad_scaled"] = (df["baseline_mad"] * MAD_TO_STD).replace(0, np.nan)
-#     df["deviation"] = df["value"] - df["baseline_median"]
-#     df["deviation_zscore"] = df["deviation"] / df["baseline_mad_scaled"]
-#     return df
-
-
-# def _run_length_above(s: pd.Series, thresh: float = 2.0) -> pd.Series:
-#     above = (s > thresh).astype(int)
-#     return above.groupby((above == 0).cumsum()).cumsum()
-
-
-# def _add_rolling_features(df: pd.DataFrame) -> pd.DataFrame:
-#     df = df.sort_values(["locationid", "parameter", "datetime"])
-#     grp = df.groupby(["locationid", "parameter"], group_keys=False)
-
-#     df["rate_of_change_1h"] = grp["value"].diff()
-
-#     for w in ROLLING_WINDOWS_HOURS:
-#         df[f"roll_mean_{w}h"] = grp["value"].transform(
-#             lambda s, window=w: s.rolling(window, min_periods=max(2, window // 2)).mean()
-#         )
-#         df[f"roll_std_{w}h"] = grp["value"].transform(
-#             lambda s, window=w: s.rolling(window, min_periods=max(2, window // 2)).std()
-#         )
-
-#     df["sustained_elevated_hours"] = grp["deviation_zscore"].transform(_run_length_above)
-#     return df
-
-
-# def _haversine_km(lat1, lon1, lat2, lon2) -> np.ndarray:
-#     r = 6371.0
-#     lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
-#     dlat, dlon = lat2 - lat1, lon2 - lon1
-#     a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
-#     return 2 * r * np.arcsin(np.sqrt(a))
-
-
-# def _build_knn_table(df: pd.DataFrame, k: int) -> pd.DataFrame:
-#     stations = df[["locationid", "latitude", "longitude"]].drop_duplicates("locationid")
-#     pairs = stations.merge(stations, how="cross", suffixes=("", "_nbr"))
-#     pairs = pairs[pairs["locationid"] != pairs["locationid_nbr"]]
-#     pairs["distance_km"] = _haversine_km(
-#         pairs["latitude"], pairs["longitude"], pairs["latitude_nbr"], pairs["longitude_nbr"]
-#     )
-#     pairs = pairs.sort_values(["locationid", "distance_km"])
-#     knn = pairs.groupby("locationid").head(k)
-#     return knn[["locationid", "locationid_nbr", "distance_km"]].reset_index(drop=True)
-
-
-# def _add_spatial_features(df: pd.DataFrame, knn: pd.DataFrame) -> pd.DataFrame:
-#     small = df[["locationid", "parameter", "datetime", "value", "deviation_zscore"]]
-
-#     pairs = knn.merge(small, on="locationid", how="inner")
-#     pairs = pairs.rename(columns={"value": "value_self", "deviation_zscore": "zscore_self"})
-#     nbr_vals = small.rename(
-#         columns={"locationid": "locationid_nbr", "value": "value_nbr", "deviation_zscore": "zscore_nbr"}
-#     )
-#     pairs = pairs.merge(nbr_vals, on=["locationid_nbr", "parameter", "datetime"], how="inner")
-
-#     agg = (
-#         pairs.groupby(["locationid", "parameter", "datetime"])
-#         .agg(
-#             n_neighbors=("locationid_nbr", "nunique"),
-#             nearest_neighbor_km=("distance_km", "min"),
-#             neighbor_mean_value=("value_nbr", "mean"),
-#             neighbor_mean_zscore=("zscore_nbr", "mean"),
-#             neighbor_frac_elevated=("zscore_nbr", lambda s: (s > 2).mean()),
-#         )
-#         .reset_index()
-#     )
-
-#     df = df.merge(agg, on=["locationid", "parameter", "datetime"], how="left")
-#     df["spatial_deviation"] = df["value"] - df["neighbor_mean_value"]
-#     df["spatially_isolated"] = (
-#         (df["deviation_zscore"] > 2) & (df["neighbor_frac_elevated"].fillna(0) < 0.3)
-#     ).astype(int)
-#     df["regionally_coherent"] = (
-#         (df["deviation_zscore"] > 2) & (df["neighbor_frac_elevated"].fillna(0) >= 0.5)
-#     ).astype(int)
-#     return df
-
-
-# def _add_cross_parameter_features(df: pd.DataFrame) -> pd.DataFrame:
-#     wide_z = df.pivot_table(
-#         index=["locationid", "datetime"], columns="parameter", values="deviation_zscore"
-#     )
-#     wide_val = df.pivot_table(
-#         index=["locationid", "datetime"], columns="parameter", values="value"
-#     )
-
-#     cross = pd.DataFrame(index=wide_z.index)
-
-#     if {"pm1", "pm25"}.issubset(wide_z.columns):
-#         cross["pm1_pm25_comovement"] = wide_z[["pm1", "pm25"]].min(axis=1)
-
-#     if {"um003", "pm25"}.issubset(wide_z.columns):
-#         cross["particle_pm25_comovement"] = wide_z[["um003", "pm25"]].min(axis=1)
-
-#     if "relativehumidity" in wide_val.columns:
-#         cross["humidity_pct"] = wide_val["relativehumidity"]
-#         cross["high_humidity_flag"] = (wide_val["relativehumidity"] > HIGH_HUMIDITY_PCT).astype(int)
-
-#         if {"pm25", "um003"}.issubset(wide_z.columns):
-#             cross["possible_humidity_artifact"] = (
-#                 (wide_z["pm25"] > 2)
-#                 & (wide_val["relativehumidity"] > HIGH_HUMIDITY_PCT)
-#                 & (wide_z["um003"] <= 1)
-#             ).astype(int)
-
-#     if "temperature" in wide_val.columns:
-#         cross["temperature_c"] = wide_val["temperature"]
-
-#     if cross.empty:
-#         return df
-
-#     cross = cross.reset_index()
-#     df = df.merge(cross, on=["locationid", "datetime"], how="left")
-#     return df
-
-
-# def build_hourly_event_features(silver: pd.DataFrame) -> pd.DataFrame:
-#     """Hourly features from Athena silver (`locationid`, `datetime`, lat/lon)."""
-#     df = silver.copy()
-#     df = df.sort_values(["locationid", "parameter", "datetime"])
-#     df["parameter"] = df["parameter"].str.lower()
-
-#     print("Building event features...")
-#     print(f"\nInitial silver data shape: {df.shape[0]} rows, {df.shape[1]} columns")
-
-#     print(f"\nDropping stations with < {MIN_ROWS_PER_STATION_PARAMETER} rows per parameter...")
-#     df = _drop_insufficient_stations(df, MIN_ROWS_PER_STATION_PARAMETER)
-
-#     print("\nAdding time parts...")
-#     df = _add_time_parts(df)
-
-#     print("\nAdding baseline deviation features...")
-#     df = _add_baseline_deviation(df)
-
-#     print("\nAdding rolling features...")
-#     df = _add_rolling_features(df)
-
-#     print("\nAdding spatial features...")
-#     knn = _build_knn_table(df, NEIGHBOR_K)
-#     df = _add_spatial_features(df, knn)
-
-#     print("\nAdding cross-parameter features...")
-#     df = _add_cross_parameter_features(df)
-
-#     return df
