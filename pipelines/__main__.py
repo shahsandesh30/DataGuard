@@ -137,7 +137,7 @@ LAYER2_TABLES = ("event_features", "event_alerts")
 
 
 def _detect(args: argparse.Namespace) -> int:
-    bronze, silver, gold = _roots(args)
+    _, silver, gold = _roots(args)
 
     if storage.is_s3(gold):
         # pipelines/detection writes its build summary with Path.write_text, which
@@ -145,7 +145,7 @@ def _detect(args: argparse.Namespace) -> int:
         # the two gold tables from there. Reading bronze from S3 works as-is,
         # because that goes through pipelines.conformance.
         with tempfile.TemporaryDirectory() as staging:
-            result = build_detection(bronze_root=bronze, gold_root=staging)
+            result = build_detection(silver_root=silver, gold_root=staging)
             for table in LAYER2_TABLES:
                 frame = storage.read_parquet(staging, f"layer2/{table}")
                 storage.write_parquet(frame, storage.join(gold, "layer2"), table)
