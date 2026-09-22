@@ -56,7 +56,7 @@ VARIANCE_EPS = 1e-9  # below this, a day's readings never moved
 # --------------------------------------------------------------------------- #
 
 LAYER2_REGION_ID = "sydney_metro"
-LAYER2_PM_PARAMETERS = ("pm25", "pm10", "pm1")
+LAYER2_PM_PARAMETERS = ("pm25", "um003", "pm1")
 LAYER2_BASELINE_DAYS = 7
 MIN_EVENT_ROWS = 20  # history before the ensemble may train
 WEAK_LABEL_PM25_RATIO = 2.0
@@ -107,7 +107,11 @@ class Settings:
 
     bronze_root: str = _zone("BRONZE_ROOT", "bronze")
     silver_root: str = _zone("SILVER_ROOT", "silver")
-    gold_root: str = _zone("GOLD_ROOT", "gold")
+    # gold_root: str = _zone("GOLD_ROOT", "gold")
+
+    # bronze_root: str = _env("BRONZE_BUCKET", "dataguard-openaq-bronze")
+    # silver_root: str = _env("SILVER_BUCKET", "dataguard-openaq-silver")
+    gold_root: str = _env("GOLD_BUCKET", "dataguard-openaq-gold")
 
     # Used when a zone is on S3, and by pipelines/detection's Athena reads.
     glue_database: str = _env("GLUE_DATABASE", "dataguard")

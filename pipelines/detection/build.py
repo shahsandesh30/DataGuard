@@ -9,8 +9,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from pipelines import storage
 from pipelines.config import MIN_EVENT_ROWS, load_settings
-from pipelines.conformance.conform import read_conformed
+from pipelines.conformance.conform import read_conformed, read_silver
 from pipelines.detection.ensemble import EVENT_ALERT_COLUMNS, fit_ensemble, score_events
 from pipelines.detection.features import build_event_features, weak_labels
 from pipelines.quality.build import _write_partitioned
@@ -23,7 +24,8 @@ class DetectionBuildResult:
     feature_rows: int
     alert_rows: int
     ensemble_trained: bool
-    output_path: str
+    features_path: str
+    alerts_path: str
 
 
 def read_event_features(gold_root: Path | None = None) -> pd.DataFrame:
@@ -45,17 +47,18 @@ def read_event_alerts(gold_root: Path | None = None) -> pd.DataFrame:
 
 
 def build_detection(
-    bronze_root: Path | None = None,
+    silver_root: Path | None = None,
     gold_root: Path | None = None,
 ) -> DetectionBuildResult:
     """Compute Layer 2 features and ranked alerts, write to gold."""
     settings = load_settings()
-    bronze = Path(bronze_root or settings.bronze_root)
-    gold = Path(gold_root or settings.gold_root) / "layer2"
+    silver = silver_root or settings.silver_root
+    gold = storage.join(gold_root or settings.gold_root, "layer2")
 
-    conformed = read_conformed(bronze)
-    features = build_event_features(conformed)
-    labels = weak_labels(features, conformed)
+    # conformed = read_conformed(bronze)
+    silver = read_silver(silver)
+    features = build_event_features(silver)
+    labels = weak_labels(features, silver)
 
     ensemble_trained = len(features) >= MIN_EVENT_ROWS
     models = fit_ensemble(features) if ensemble_trained else None
@@ -69,18 +72,24 @@ def build_detection(
     else:
         alerts = score_events(models, features, weak_label=labels)
 
-    features_path = _write_partitioned(features, gold, "event_features", ["locationid", "date_local"])
-    alerts_path = _write_partitioned(alerts, gold, "event_alerts", ["locationid", "date_local"])
+    # features_path = _write_partitioned(features, gold, "event_features", ["locationid", "date_local"])
+    # alerts_path = _write_partitioned(alerts, gold, "event_alerts", ["locationid", "date_local"])
+    features_path = storage.write_parquet(features, gold, "event_features")
+    alerts_path = storage.write_parquet(alerts, gold, "event_alerts")
 
-    summary = {
-        "feature_rows": int(len(features)),
-        "alert_rows": int(len(alerts)),
-        "ensemble_trained": ensemble_trained,
-        "features_path": str(features_path),
-        "alerts_path": str(alerts_path),
-    }
-    gold.mkdir(parents=True, exist_ok=True)
-    (gold / "_detection_build.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    result = DetectionBuildResult(
+        feature_rows=int(len(features)),
+        alert_rows=int(len(alerts)),
+        ensemble_trained=ensemble_trained,
+        features_path=str(features_path),
+        alerts_path=str(alerts_path)
+    )
+
+    storage.write_text(
+        storage.join(gold, "_detection_build.json"), json.dumps(result.__dict__, indent=2) + "\n"
+    )
+    # gold.mkdir(parents=True, exist_ok=True)
+    # (gold / "_detection_build.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
     logger.info(
         "Layer 2 built: %s feature rows, %s alerts (trained=%s) -> %s",
@@ -89,9 +98,4 @@ def build_detection(
         ensemble_trained,
         gold,
     )
-    return DetectionBuildResult(
-        feature_rows=int(len(features)),
-        alert_rows=int(len(alerts)),
-        ensemble_trained=ensemble_trained,
-        output_path=str(gold),
-    )
+    return result

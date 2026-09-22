@@ -28,7 +28,6 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-import tempfile
 from collections import Counter
 from datetime import date
 
@@ -133,33 +132,16 @@ def _quality(args: argparse.Namespace) -> int:
     return 0
 
 
-LAYER2_TABLES = ("event_features", "event_alerts")
-
-
 def _detect(args: argparse.Namespace) -> int:
-    bronze, _, gold = _roots(args)
-
-    if storage.is_s3(gold):
-        # pipelines/detection writes its build summary with Path.write_text, which
-        # cannot address S3. Run it against a local staging directory and publish
-        # the two gold tables from there. Reading bronze from S3 works as-is,
-        # because that goes through pipelines.conformance.
-        with tempfile.TemporaryDirectory() as staging:
-            result = build_detection(bronze_root=bronze, gold_root=staging)
-            for table in LAYER2_TABLES:
-                frame = storage.read_parquet(staging, f"layer2/{table}")
-                storage.write_parquet(frame, storage.join(gold, "layer2"), table)
-        published = storage.join(gold, "layer2")
-    else:
-        result = build_detection(bronze_root=bronze, gold_root=gold)
-        published = result.output_path
-
+    _, silver, gold = _roots(args)
+    result = build_detection(silver_root=silver, gold_root=gold)
     logging.info(
         "Layer 2: %s feature rows, %s alerts (trained=%s) -> %s",
         result.feature_rows,
         result.alert_rows,
         result.ensemble_trained,
-        published,
+        result.features_path,
+        result.alert_path
     )
     return 0
 
