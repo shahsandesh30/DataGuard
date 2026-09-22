@@ -83,6 +83,11 @@ class SilverBuildResult:
     files_read: int
     files_failed: int
     rows: int
+    parameters: list[str]
+    units: list[str]
+    locations: list[int]
+    date_local_min: str | None
+    date_local_max: str | None
     output_path: str
     failed: list[str]
 
@@ -243,29 +248,28 @@ def build_silver(
     """Conform every bronze file and write the silver zone."""
     settings = load_settings()
     bronze = bronze_root or settings.bronze_root
-    silver = silver_root or settings.silver_root
+    s_root = silver_root or settings.silver_root
+    silver = storage.join(silver_root or settings.silver_root, "silver-data")
 
     combined, files, failed = _conform_all(bronze)
     write_silver(combined, silver)
 
-    summary = {
-        "files_read": len(files) - len(failed),
-        "files_failed": len(failed),
-        "rows": int(len(combined)),
-        "parameters": sorted(combined["parameter"].dropna().unique().tolist()),
-        "units": sorted(combined["unit"].dropna().unique().tolist()),
-        "locations": sorted(int(v) for v in combined["locationid"].dropna().unique()),
-        "date_local_min": None if combined.empty else str(combined["date_local"].min()),
-        "date_local_max": None if combined.empty else str(combined["date_local"].max()),
-        "failed": failed,
-    }
-    storage.write_text(storage.join(silver, "_build.json"), json.dumps(summary, indent=2) + "\n")
-
-    logger.info("Silver built: %s rows from %s files -> %s", len(combined), len(files), silver)
-    return SilverBuildResult(
+    result = SilverBuildResult(
         files_read=len(files) - len(failed),
         files_failed=len(failed),
         rows=int(len(combined)),
+        parameters=sorted(combined["parameter"].dropna().unique().tolist()),
+        units=sorted(combined["unit"].dropna().unique().tolist()),
+        locations=sorted(int(v) for v in combined["locationid"].dropna().unique()),
+        date_local_min=None if combined.empty else str(combined["date_local"].min()),
+        date_local_max=None if combined.empty else str(combined["date_local"].max()),
         output_path=storage.normalize(silver),
         failed=failed,
     )
+
+    storage.write_text(
+        storage.join(s_root, "_silver_build.json"), json.dumps(result.__dict__, indent=2) + "\n"
+    )
+
+    logger.info("Silver built: %s rows from %s files -> %s", len(combined), len(files), s_root)
+    return result

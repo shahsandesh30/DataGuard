@@ -18,7 +18,6 @@ from pipelines.quality.build import _write_partitioned
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class DetectionBuildResult:
     feature_rows: int
