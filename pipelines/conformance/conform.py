@@ -209,16 +209,14 @@ def _conform_all(bronze_root: str | Path) -> tuple[pd.DataFrame, list[str], list
     return combined, files, failed
 
 
-def read_conformed(bronze_root: str | Path | None = None) -> pd.DataFrame:
+def read_conformed(silver_root: str | Path | None = None) -> pd.DataFrame:
     """Read and conform every bronze file in memory.
 
     This is the only place bronze CSVs are parsed. ``build_silver``
     materialises the result; downstream stages read the silver zone instead.
     """
     settings = load_settings()
-    rows, _, _ = _conform_all(bronze_root or settings.bronze_root)
-    return rows
-
+    return storage.read_parquet(silver_root or settings.silver_root, "silver-data")
 
 def read_silver(silver_root: str | Path | None = None) -> pd.DataFrame:
     """Read the silver zone back as one frame."""

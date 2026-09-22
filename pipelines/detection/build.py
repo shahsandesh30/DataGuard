@@ -11,7 +11,7 @@ import pandas as pd
 
 from pipelines import storage
 from pipelines.config import MIN_EVENT_ROWS, load_settings
-from pipelines.conformance.conform import read_conformed, read_silver
+from pipelines.conformance.conform import read_silver
 from pipelines.detection.ensemble import EVENT_ALERT_COLUMNS, fit_ensemble, score_events
 from pipelines.detection.features import build_event_features, weak_labels
 from pipelines.quality.build import _write_partitioned

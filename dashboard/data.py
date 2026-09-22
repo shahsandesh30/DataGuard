@@ -30,15 +30,15 @@ def load_stations(bronze_root: Path | None = None) -> pd.DataFrame:
     """One row per locationid with median lat/lon and a display name."""
     conformed = read_conformed(bronze_root)
     if conformed is None or conformed.empty:
-        return pd.DataFrame(columns=["locationid", "location_name", "lat", "lon"])
+        return pd.DataFrame(columns=["locationid", "location_name", "latitude", "longitude"])
 
     frame = conformed.copy()
     frame["locationid"] = frame["locationid"].astype(int)
-    frame["lat"] = pd.to_numeric(frame["lat"], errors="coerce")
-    frame["lon"] = pd.to_numeric(frame["lon"], errors="coerce")
-    frame = frame.dropna(subset=["lat", "lon"])
+    frame["latitude"] = pd.to_numeric(frame["latitude"], errors="coerce")
+    frame["longitude"] = pd.to_numeric(frame["longitude"], errors="coerce")
+    frame = frame.dropna(subset=["latitude", "longitude"])
     if frame.empty:
-        return pd.DataFrame(columns=["locationid", "location_name", "lat", "lon"])
+        return pd.DataFrame(columns=["locationid", "location_name", "latitude", "longitude"])
 
     rows: list[dict] = []
     for locationid, group in frame.groupby("locationid", sort=False):
@@ -48,8 +48,8 @@ def load_stations(bronze_root: Path | None = None) -> pd.DataFrame:
             {
                 "locationid": int(locationid),
                 "location_name": name,
-                "lat": float(group["lat"].median()),
-                "lon": float(group["lon"].median()),
+                "latitude": float(group["latitude"].median()),
+                "longitude": float(group["longitude"].median()),
             }
         )
     return pd.DataFrame(rows)
@@ -97,8 +97,8 @@ def build_station_status(
             columns=[
                 "locationid",
                 "location_name",
-                "lat",
-                "lon",
+                "latitude",
+                "longitude",
                 "status",
                 "date_local",
                 "trust_score",
