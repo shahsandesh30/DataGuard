@@ -129,7 +129,7 @@ def build_quality(
         output_path=storage.normalize(gold),
     )
     storage.write_text(
-        storage.join(gold, "_build.json"), json.dumps(result.__dict__, indent=2) + "\n"
+        storage.join(gold, "_quality_build.json"), json.dumps(result.__dict__, indent=2) + "\n"
     )
     logger.info(
         "Layer 1 built: %s station-days, %s rule incidents, %s model incidents -> %s",
