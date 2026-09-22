@@ -11,13 +11,12 @@ import pandas as pd
 
 from pipelines import storage
 from pipelines.config import MIN_EVENT_ROWS, load_settings
-from pipelines.conformance.conform import read_conformed, read_silver
+from pipelines.conformance.conform import read_silver
 from pipelines.detection.ensemble import EVENT_ALERT_COLUMNS, fit_ensemble, score_events
 from pipelines.detection.features import build_event_features, weak_labels
 from pipelines.quality.build import _write_partitioned
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class DetectionBuildResult:
@@ -55,7 +54,6 @@ def build_detection(
     silver = silver_root or settings.silver_root
     gold = storage.join(gold_root or settings.gold_root, "layer2")
 
-    # conformed = read_conformed(bronze)
     silver = read_silver(silver)
     features = build_event_features(silver)
     labels = weak_labels(features, silver)
@@ -72,8 +70,6 @@ def build_detection(
     else:
         alerts = score_events(models, features, weak_label=labels)
 
-    # features_path = _write_partitioned(features, gold, "event_features", ["locationid", "date_local"])
-    # alerts_path = _write_partitioned(alerts, gold, "event_alerts", ["locationid", "date_local"])
     features_path = storage.write_parquet(features, gold, "event_features")
     alerts_path = storage.write_parquet(alerts, gold, "event_alerts")
 
@@ -88,8 +84,6 @@ def build_detection(
     storage.write_text(
         storage.join(gold, "_detection_build.json"), json.dumps(result.__dict__, indent=2) + "\n"
     )
-    # gold.mkdir(parents=True, exist_ok=True)
-    # (gold / "_detection_build.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
     logger.info(
         "Layer 2 built: %s feature rows, %s alerts (trained=%s) -> %s",
