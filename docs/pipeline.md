@@ -3,8 +3,8 @@
 A walkthrough of what executes, in which file, and what you should see at each
 stage. For *why* the system is shaped this way, see [architecture.md](architecture.md).
 
-Everything below matches a real local run: a full January 2026 for four Sydney
-stations.
+Count examples below match the latest audited local snapshot: 342 bronze files
+covering 14 stations from 2026-01-01 through 2026-02-01.
 
 ---
 
@@ -137,7 +137,7 @@ converted reading from a mislabelled one.
 **Expect:**
 
 ```
-INFO Silver: 9779 rows, 94 files read, 0 failed -> data/silver
+INFO Silver: 38449 rows, 342 files read, 0 failed -> data/silver
 ```
 
 **Lands at:** `data/silver/locationid=<ID>/year=<YYYY>/part-0.parquet` +
@@ -153,7 +153,7 @@ INFO Silver: 9779 rows, 94 files read, 0 failed -> data/silver
 
 ### 3a. `read_silver`
 
-The 9,779 conformed rows back out.
+The 38,449 conformed rows back out.
 
 ### 3b. `compute_sensor_day_metrics` — `metrics.py`
 
@@ -165,7 +165,7 @@ unit mismatches.
 **trailing 7-day median cadence**, not a fixed 24. A station that reports four
 times a day is not 83% incomplete.
 
-→ **426 sensor-days.**
+→ **1,701 sensor-days.**
 
 ### 3c. `compute_station_day_metrics` — `metrics.py`
 
@@ -180,7 +180,7 @@ come from the readings** — this is why bronze is read here:
 
 Plus `sensor_dropout_count`: sensors that reported yesterday and not today.
 
-→ **98 station-days, 18 columns.**
+→ **353 station-days, 18 columns.**
 
 ### 3d. `apply_quality_rules` — `rules.py`
 
@@ -216,7 +216,7 @@ rules missed.
 **Expect:**
 
 ```
-INFO Layer 1: 98 station-days, 13 rule incidents, 1 model incidents (trained=True) -> data\gold\layer1
+INFO Layer 1: 353 station-days, 139 rule incidents, 2 model incidents (trained=True) -> data\gold\layer1
 ```
 
 **`trained=False` is expected on a small sample, not a bug.** It means no
@@ -231,8 +231,6 @@ location reached 14 station-days, so the stage ran rules-only and said so.
 
 `_detect` → `build_detection` (`pipelines/detection/build.py`)
 
-> This package is owned by another team member. Treat it as read-only.
-
 ```
 read_silver(silver)  →  build_event_features  →  weak_labels
                      →  fit_ensemble  →  score_events
@@ -244,6 +242,12 @@ smoke event lifts several stations together, while one station alone is more
 likely a fault. Detectors: **IsolationForest + LOF + DBSCAN**, gated on
 `MIN_EVENT_ROWS` (20).
 
+`agreement_count` is the number of detector votes (0–3). The normalized
+`alert_score` averages agreement share with the mean detector score and remains
+in `[0, 1]`. Only rows with at least one vote enter `event_alerts`; each
+region-day is then capped at the top 10. Weak labels are evaluation metadata and
+never decide whether a row becomes an alert.
+
 Two things to know about how it connects:
 
 - It reads the materialised silver zone, so Layer 1 and Layer 2 evaluate the
@@ -254,7 +258,7 @@ Two things to know about how it connects:
 **Expect:**
 
 ```
-INFO Layer 2: 164 feature rows, 164 alerts (trained=True) -> data\gold\layer2
+INFO Layer 2: 995 feature rows, 253 alerts (trained=True) -> data\gold\layer2
 ```
 
 **Lands at:** `gold/layer2/event_features`, `event_alerts`, plus
@@ -286,11 +290,11 @@ Inside `fuse`:
 **Expect:**
 
 ```
-INFO Fusion: 164 alerts (147 escalated, 17 quarantined) -> data\gold\fusion
+INFO Fusion: 253 alerts (181 escalated, 72 quarantined) -> data\gold\fusion
 ```
 
-Trust scores span 0.105 – 1.000. The 17 quarantines break down as R2 ×9,
-R4+R7 ×7, M1 ×1.
+Trust scores span 0.055–0.905. Every fusion row corresponds to a Layer 2 row
+with at least one detector vote.
 
 > ⚠️ **Fusion is alert-driven.** No Layer 2 alerts means no fusion rows, *even if
 > Layer 1 found plenty*. Those Layer-1-only findings are not lost — the dashboard
@@ -320,7 +324,7 @@ cat data/gold/fusion/_build.json            # escalated vs quarantined
 
 The fastest sanity check is the chain of row counts:
 
-**94 files → 9,779 rows → 426 sensor-days → 98 station-days → 164 alerts → 164 fused.**
+**342 files → 38,449 rows → 1,701 sensor-days → 353 station-days → 253 alerts → 253 fused.**
 
 If any link collapses to zero, that is the stage to open.
 

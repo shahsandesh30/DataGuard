@@ -15,6 +15,7 @@ from pipelines.config import (
     FUSION_STATUS_QUARANTINED,
     load_settings,
 )
+from pipelines.detection.build import read_event_alerts
 from pipelines.fusion.trust_score import fuse
 from pipelines.quality.build import read_quality_incidents
 
@@ -32,16 +33,6 @@ class FusionBuildResult:
 def read_trust_alerts(gold_root: str | Path | None = None) -> pd.DataFrame:
     settings = load_settings()
     return storage.read_parquet(gold_root or settings.gold_root, "fusion/trust_alerts")
-
-
-def read_event_alerts(gold_root: str | Path | None = None) -> pd.DataFrame:
-    """Read the Layer 2 alert table.
-
-    Fusion depends on the gold table, not on pipelines.detection: that module's
-    own reader globs the local filesystem and cannot see an S3 zone.
-    """
-    settings = load_settings()
-    return storage.read_parquet(gold_root or settings.gold_root, "layer2/event_alerts")
 
 
 def build_fusion(gold_root: str | Path | None = None) -> FusionBuildResult:

@@ -16,9 +16,8 @@ deleted or hidden.
 | Escalated / quarantined status | **Active** |
 | Gold publish `data/gold/fusion/trust_alerts/` | **Active** |
 
-Last run (January 2026, four Sydney stations): **164 alerts — 147 escalated,
-17 quarantined**, trust scores spanning 0.105 to 1.000. The quarantines break
-down as R2 x9, R4+R7 x7, M1 x1.
+Latest audited local snapshot: **253 alerts — 181 escalated, 72 quarantined**,
+with trust scores spanning 0.055 to 0.905.
 
 ```bash
 python -m pipelines quality

@@ -19,8 +19,8 @@ from pipelines import storage
     [
         ("s3://bucket/silver", "s3://bucket/silver"),
         ("s3://bucket/silver/", "s3://bucket/silver"),
-        # pipelines/detection wraps roots in Path(), which collapses the double
-        # slash and flips separators on Windows. Both forms must survive.
+        # Some callers may round-trip configuration through pathlib, which
+        # collapses the slash and flips separators. Both forms must survive.
         ("s3:/bucket/silver", "s3://bucket/silver"),
         ("s3:\\bucket\\silver", "s3://bucket/silver"),
         ("S3://bucket/silver", "s3://bucket/silver"),
@@ -253,7 +253,7 @@ def test_s3_writes_register_a_glue_table(tmp_path, monkeypatch):
 
 
 def test_glue_table_name_keeps_the_zone_prefix():
-    """Layer 2 gold must not collide with the event_features table detection owns."""
+    """Layer names keep similarly named Glue datasets from colliding."""
     assert storage._glue_table_name("s3://bucket/layer2/event_features") == (
         "layer2_event_features"
     )

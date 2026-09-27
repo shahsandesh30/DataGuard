@@ -19,8 +19,8 @@ BRONZE_ROOT / SILVER_ROOT / GOLD_ROOT in .env::
                                 --silver-root s3://dataguard-openaq-silver
 
 Parquet written to S3 is registered in the Glue Catalog, so Athena sees the same
-tables. Layer 2 still conforms bronze in memory rather than reading silver; it is
-owned by another team member, so migrating it is a follow-up.
+tables. Every downstream stage reads the materialised output of the preceding
+stage through the shared local/S3 storage layer.
 """
 
 from __future__ import annotations

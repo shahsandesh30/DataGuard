@@ -3,6 +3,7 @@ import json
 import pandas as pd
 
 from pipelines.conformance.conform import SILVER_COLUMNS
+from pipelines.detection.baseline import trailing_stats
 from pipelines.detection.build import build_detection, read_event_alerts, read_event_features
 from pipelines.detection.ensemble import EVENT_ALERT_COLUMNS, fit_ensemble, score_events
 from pipelines.detection.features import EVENT_FEATURE_COLUMNS, build_event_features, weak_labels
@@ -94,6 +95,10 @@ def test_flat_baseline_days_have_low_alert_scores():
     features = build_event_features(conformed)
     models = fit_ensemble(features)
     alerts = score_events(models, features, weak_label=weak_labels(features, conformed))
+    detector_votes = alerts[["if_flag", "lof_flag", "dbscan_flag"]].sum(axis=1)
+    assert alerts["agreement_count"].eq(detector_votes).all()
+    assert alerts["agreement_count"].between(1, 3).all()
+    assert alerts["alert_score"].between(0.0, 1.0).all()
     baseline_alerts = alerts[
         (alerts["locationid"] == 1601414) & (alerts["date_local"] == "2026-01-03")
     ]
@@ -102,6 +107,22 @@ def test_flat_baseline_days_have_low_alert_scores():
     ]
     if not baseline_alerts.empty and not spike_alerts.empty:
         assert spike_alerts.iloc[0]["alert_score"] >= baseline_alerts.iloc[0]["alert_score"]
+
+
+def test_trailing_baseline_never_uses_future_rows():
+    frame = pd.DataFrame(
+        [
+            {"locationid": 1, "parameter": "pm25", "date_local": "2026-01-01", "value": 10.0},
+            {"locationid": 1, "parameter": "pm25", "date_local": "2026-01-21", "value": 100.0},
+        ]
+    )
+    stats = trailing_stats(frame, 1, "pm25", "2026-01-20")
+    assert stats["median"] == 10.0
+
+
+def test_ensemble_requires_at_least_two_rows():
+    features = pd.DataFrame([{column: 0.0 for column in EVENT_FEATURE_COLUMNS}])
+    assert fit_ensemble(features) is None
 
 
 def test_single_station_spike_has_high_spatial_isolation():
@@ -190,3 +211,22 @@ def test_build_detection_writes_layer2_partitions(tmp_path, monkeypatch):
     if result.ensemble_trained:
         assert not alerts.empty
         assert set(EVENT_ALERT_COLUMNS).issubset(alerts.columns)
+
+
+def test_layer2_readers_use_shared_storage_for_s3(monkeypatch):
+    expected = pd.DataFrame({"locationid": [1]})
+    calls = []
+
+    def read_parquet(root, dataset):
+        calls.append((root, dataset))
+        return expected
+
+    monkeypatch.setattr("pipelines.detection.build.storage.read_parquet", read_parquet)
+
+    root = "s3://demo/gold"
+    assert read_event_features(root).equals(expected)
+    assert read_event_alerts(root).equals(expected)
+    assert calls == [
+        (root, "layer2/event_features"),
+        (root, "layer2/event_alerts"),
+    ]

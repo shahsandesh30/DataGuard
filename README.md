@@ -109,7 +109,7 @@ pipelines/
   ingestion/        OpenAQ archive -> bronze
   conformance/      bronze -> silver  (conform.py, units.py)
   quality/          Layer 1  (metrics.py -> rules.py -> detector.py -> build.py)
-  detection/        Layer 2  — owned by another team member, treat as read-only
+  detection/        Layer 2  (features.py -> ensemble.py -> build.py)
   fusion/           trust scoring  (trust_score.py, build.py)
   __main__.py       the CLI
 dashboard/app.py    Streamlit: alerts, Layer 1 health, station map
@@ -157,9 +157,8 @@ Athena sees it with no crawler run: `silver_data`, `layer1_quality_metrics`,
 `layer1_quality_sensor_metrics`, `layer1_quality_incidents`,
 `layer2_event_features`, `layer2_event_alerts`, `fusion_trust_alerts`.
 
-Silver registers as `silver_data` on purpose — that is the table
-`pipelines/detection/io.py` queries, so Layer 2 reads the silver this pipeline
-produced. Reads go straight to S3 rather than through Athena: same bytes, no
+Silver registers as `silver_data` for Athena users. The pipeline itself reads
+silver and gold directly through the shared storage layer: same bytes, no
 workgroup needed, no per-query charge.
 
 ## Documentation
@@ -177,14 +176,14 @@ workgroup needed, no per-query charge.
 ## Tests
 
 ```bash
-python -m pytest                                  # 86 tests
-python -m ruff check pipelines dashboard tests glue scripts --exclude pipelines/detection
+python -m pytest                                  # 89 tests
+python -m ruff check pipelines dashboard tests glue scripts
 ```
 
 The S3 path is tested against a fake awswrangler, so the suite runs with no
 credentials. CI runs the same checks on Python 3.11 and also import-checks the
-Glue source ZIP. The team-owned detection package is excluded from the owned
-code lint gate; its existing findings are tracked separately.
+Glue source ZIP. The same lint gate now covers Layer 2 as well as the rest of
+the pipeline.
 
 ## Where it stands
 
@@ -195,8 +194,8 @@ Latest audited local run over the current bronze snapshot:
 | Bronze | 342 data files across 14 stations |
 | Silver | 38,449 rows across 32 local dates |
 | Layer 1 | 353 station-days → 139 rule incidents + 2 model incidents |
-| Layer 2 | 995 feature rows → 320 ranked alerts |
-| Fusion | 320 alerts — **232 escalated, 88 quarantined** |
+| Layer 2 | 995 feature rows → 253 detector-backed alerts |
+| Fusion | 253 alerts — **181 escalated, 72 quarantined** |
 
 | Phase | Gate | Status |
 |---|---|---|

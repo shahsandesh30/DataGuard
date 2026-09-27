@@ -21,7 +21,7 @@ jobs:
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pytest
       - name: Lint owned code
-        run: python -m ruff check pipelines dashboard tests glue scripts --exclude pipelines/detection
+        run: python -m ruff check pipelines dashboard tests glue scripts
       - name: Build and inspect Glue artifact
         run: |
           python scripts/package_glue.py

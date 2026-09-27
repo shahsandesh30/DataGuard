@@ -66,7 +66,7 @@ TRAILING_CADENCE_DAYS = 7  # window for learning a sensor's real cadence
 VARIANCE_EPS = 1e-9  # below this, a day's readings never moved
 
 # --------------------------------------------------------------------------- #
-# Layer 2 — pollution events (owned by pipelines/detection)
+# Layer 2 — pollution events
 # --------------------------------------------------------------------------- #
 
 LAYER2_REGION_ID = "sydney_metro"
@@ -89,8 +89,7 @@ FUSION_STATUS_QUARANTINED = "quarantined"
 # Where the data lives
 # --------------------------------------------------------------------------- #
 
-# Glue table name for the silver zone. pipelines/detection runs
-# "SELECT * FROM silver_data", so conform registers silver under that name.
+# Stable Glue table name for the silver zone.
 SILVER_GLUE_TABLE = "silver_data"
 
 
@@ -123,11 +122,8 @@ class Settings:
     silver_root: str = _zone("SILVER_ROOT", "silver")
     gold_root: str = _zone("GOLD_ROOT", "gold")
 
-    # Used when a zone is on S3, and by pipelines/detection's Athena reads.
+    # Used when a zone is on S3 and storage registers Parquet in Glue.
     glue_database: str = _env("GLUE_DATABASE", "dataguard")
-    athena_output: str = _env("ATHENA_OUTPUT", "")
-    silver_bucket: str = _env("SILVER_BUCKET", "dataguard-silver")
-    gold_bucket: str = _env("GOLD_BUCKET", "dataguard-gold")
 
 
 def load_settings() -> Settings:

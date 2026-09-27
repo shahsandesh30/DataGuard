@@ -213,11 +213,6 @@ def _conform_all(bronze_root: str | Path) -> tuple[pd.DataFrame, list[str], list
     return combined, files, failed
 
 
-def read_conformed(silver_root: str | Path | None = None) -> pd.DataFrame:
-    """Compatibility alias for Layer 2; downstream stages read materialised silver."""
-    return read_silver(silver_root)
-
-
 def read_silver(silver_root: str | Path | None = None) -> pd.DataFrame:
     """Read the silver zone back as one frame."""
     settings = load_settings()

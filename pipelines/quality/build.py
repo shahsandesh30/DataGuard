@@ -28,15 +28,6 @@ from pipelines.quality.rules import apply_quality_rules
 
 logger = logging.getLogger(__name__)
 
-
-def _write_partitioned(
-    frame: pd.DataFrame, root: str | Path, name: str, _key_cols: list[str] | None = None
-) -> str:
-    """Shim: ``pipelines.detection.build`` imports this name.
-    """
-    return storage.write_parquet(frame, root, name)
-
-
 @dataclass
 class QualityBuildResult:
     sensor_day_rows: int

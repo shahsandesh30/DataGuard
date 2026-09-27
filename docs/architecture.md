@@ -70,9 +70,9 @@ Parquet written to S3 is **registered in the Glue Catalog on the way out**, so
 Athena sees each table with no crawler run. Reads go straight to S3 rather than
 through Athena: same bytes, no workgroup needed, no per-query charge.
 
-Silver registers as `silver_data` deliberately — that is the table
-`pipelines/detection/io.py` queries, so Layer 2 reads the silver this pipeline
-produced.
+Silver registers as `silver_data` deliberately so Athena users have a stable
+table name. Layer 2 reads the same silver bytes through the shared storage
+layer, without an Athena query or query-output bucket.
 
 ## Why batch, not streaming
 

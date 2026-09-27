@@ -11,7 +11,8 @@ import pandas as pd
 from pipelines import storage
 from pipelines.config import load_settings
 from pipelines.conformance.conform import read_silver
-from pipelines.fusion.build import read_event_alerts, read_trust_alerts
+from pipelines.detection.build import read_event_alerts
+from pipelines.fusion.build import read_trust_alerts
 from pipelines.quality.build import read_quality_incidents, read_quality_metrics
 
 STATION_COLUMNS = ["locationid", "location_name", "latitude", "longitude"]
