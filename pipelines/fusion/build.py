@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from pipelines import storage
+from pipelines.build_metadata import build_summary_json
 from pipelines.config import (
     FUSION_STATUS_ESCALATED,
     FUSION_STATUS_QUARANTINED,
@@ -49,7 +49,9 @@ def build_fusion(gold_root: str | Path | None = None) -> FusionBuildResult:
     settings = load_settings()
     gold = storage.normalize(gold_root or settings.gold_root)
 
-    fused = fuse(read_quality_incidents(gold), read_event_alerts(gold))
+    quality_incidents = read_quality_incidents(gold)
+    event_alerts = read_event_alerts(gold)
+    fused = fuse(quality_incidents, event_alerts)
     fusion_root = storage.join(gold, "fusion")
     storage.write_parquet(fused, fusion_root, "trust_alerts")
 
@@ -61,7 +63,12 @@ def build_fusion(gold_root: str | Path | None = None) -> FusionBuildResult:
         output_path=fusion_root,
     )
     storage.write_text(
-        storage.join(fusion_root, "_build.json"), json.dumps(result.__dict__, indent=2) + "\n"
+        storage.join(fusion_root, "_build.json"),
+        build_summary_json(
+            result,
+            input_quality_incident_rows=int(len(quality_incidents)),
+            input_event_alert_rows=int(len(event_alerts)),
+        ),
     )
     logger.info(
         "Fusion built: %s alerts (%s escalated, %s quarantined) -> %s",

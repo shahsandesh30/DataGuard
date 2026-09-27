@@ -84,27 +84,30 @@ That 72-hour figure is a *published delivery commitment*, which is what makes
 freshness measurable against a stated promise rather than a threshold we
 invented. See [data-source.md](data-source.md).
 
-Scheduled orchestration (AWS Step Functions) is designed but **not yet built**:
+The scheduler-facing entry point is `glue/run_pipeline.py`:
 
 ```
 fetch → conform → L1 metrics → L1 score ─┐
                 → L2 features → L2 score ─┴→ fusion → publish gold
 ```
 
-Today the five stages are run from the CLI, individually or via
-`python -m pipelines run`.
+It computes a trailing retry window and delegates to the same
+`python -m pipelines run` CLI used locally. For the demo, EventBridge Scheduler
+starts one Glue 5.1 job each day at 06:00 Australia/Sydney. Glue maximum
+concurrency is one because the bronze arrival manifest is not safe for
+concurrent writers. A cron job, Windows Task Scheduler, or later GitHub Actions
+workflow can invoke the same entry point; there is no second implementation to
+maintain.
 
 ## Serving
 
-Gold is queried through Amazon Athena and rendered by a Streamlit dashboard
-(`dashboard/`). Local DuckDB serving is the fallback if AWS Academy credits run
-out — risk R2 in [risk-register.md](risk-register.md).
+Gold is read through the shared storage layer and rendered by a Streamlit
+dashboard (`dashboard/`). The same loaders read local Parquet or S3 directly;
+Athena remains available for ad-hoc queries over the registered Glue tables.
 
 ## Known architectural gaps
 
 | Gap | Consequence |
 |---|---|
-| Layer 2 reads **bronze**, re-conforming in memory, rather than silver | The two layers can silently disagree about the same day |
-| `detection/build.py` writes its summary with `Path.write_text` | `detect` needs a local staging hop when gold is on S3 |
 | No evaluation metrics for either layer | "It works" is currently an assertion, not a result |
-| AWS resources created by hand | Not reproducible; contradicts risk R3's mitigation |
+| AWS resources created by hand for the demo | Recreate them with the generated policy/job JSON and deployment runbook; Terraform is deferred |

@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m pytest
+      - name: Lint owned code
+        run: python -m ruff check pipelines dashboard tests glue scripts --exclude pipelines/detection
+      - name: Build and inspect Glue artifact
+        run: |
+          python scripts/package_glue.py
+          PYTHONPATH=build/glue/dataguard-pipelines.zip python -c "import pipelines; import pipelines.storage"

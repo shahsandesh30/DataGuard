@@ -9,7 +9,10 @@ Run locally:  streamlit run dashboard/app.py
 
 from __future__ import annotations
 
+import logging
 import sys
+from contextlib import suppress
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -25,12 +28,29 @@ from dashboard.data import (  # noqa: E402 — needs ROOT on sys.path first
     available_dates,
     build_station_status,
     filter_by_date,
+    latest_build_time,
+    load_build_summaries,
     load_dashboard_frames,
     load_stations,
 )
+from dashboard.runtime import apply_runtime_secrets, is_public_dashboard  # noqa: E402
 from pipelines.config import load_settings  # noqa: E402
 
 st.set_page_config(page_title="DataGuard", page_icon="🛡️", layout="wide")
+
+logger = logging.getLogger(__name__)
+
+with suppress(Exception):  # No secrets file is normal for a local dashboard.
+    apply_runtime_secrets(dict(st.secrets))
+
+
+@st.cache_data(ttl=300, show_spinner="Loading DataGuard lake data…")
+def _load_dashboard_data(silver_root: str, gold_root: str):
+    return (
+        load_dashboard_frames(gold_root),
+        load_stations(silver_root),
+        load_build_summaries(silver_root, gold_root),
+    )
 
 ALERT_COLUMNS = [
     "status",
@@ -93,19 +113,47 @@ st.caption("Trust-aware anomaly detection for global air quality data (OpenAQ)")
 
 with st.sidebar:
     st.header("Data roots")
-    st.caption("A local directory or an s3:// prefix.")
     settings = load_settings()
-    silver_root = st.text_input("Silver root", value=settings.silver_root)
-    gold_root = st.text_input("Gold root", value=settings.gold_root)
+    if is_public_dashboard():
+        silver_root, gold_root = settings.silver_root, settings.gold_root
+        st.caption("Connected to the managed DataGuard lake.")
+    else:
+        st.caption("A local directory or an s3:// prefix.")
+        silver_root = st.text_input("Silver root", value=settings.silver_root)
+        gold_root = st.text_input("Gold root", value=settings.gold_root)
 
-    frames = load_dashboard_frames(gold_root)
+    if st.button("Refresh data", use_container_width=True):
+        _load_dashboard_data.clear()
+        st.rerun()
+
+    try:
+        frames, stations, build_summaries = _load_dashboard_data(silver_root, gold_root)
+    except Exception as exc:  # noqa: BLE001 — the public UI must fail closed and clearly
+        logger.exception("Dashboard data load failed")
+        st.error("DataGuard could not read its configured data lake.")
+        st.caption(
+            "Check the S3 roots and read-only AWS credentials, then use Refresh data. "
+            f"Error type: {type(exc).__name__}."
+        )
+        st.stop()
+
     metrics, incidents, fused = frames["metrics"], frames["incidents"], frames["trust_alerts"]
-    stations = load_stations(silver_root)
+
+    built_at = latest_build_time(build_summaries)
+    if built_at is not None:
+        if built_at.tzinfo is None:
+            built_at = built_at.replace(tzinfo=UTC)
+        st.caption(f"Last successful build: {built_at.astimezone(UTC):%Y-%m-%d %H:%M UTC}")
+        if datetime.now(UTC) - built_at.astimezone(UTC) > timedelta(hours=36):
+            st.warning("Pipeline data is stale: the last successful build was over 36 hours ago.")
+    else:
+        st.warning("No timestamped build summary was found.")
 
     st.header("As-of date")
     dates = available_dates(metrics, incidents, fused)
     if dates:
         as_of_date = st.selectbox("Station-day", options=dates, index=len(dates) - 1)
+        st.caption(f"Latest available station-day: {dates[-1]}")
         show_all_dates = st.checkbox("Show all dates in tables", value=False)
     else:
         as_of_date, show_all_dates = None, True

@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 
 from pipelines.conformance.conform import SILVER_COLUMNS
@@ -164,16 +166,20 @@ def test_build_detection_writes_layer2_partitions(tmp_path, monkeypatch):
                 ]
             )
     conformed = _silver_frame(rows)
-    bronze = tmp_path / "bronze"
-    bronze.mkdir()
+    silver = tmp_path / "silver"
     gold = tmp_path / "gold"
 
     monkeypatch.setattr(
-        "pipelines.detection.build.read_conformed",
-        lambda _bronze: conformed,
+        "pipelines.detection.build.read_silver",
+        lambda _silver: conformed,
     )
-    result = build_detection(bronze_root=bronze, gold_root=gold)
+    result = build_detection(silver_root=silver, gold_root=gold)
     assert result.feature_rows > 0
+    summary = json.loads(
+        (gold / "layer2" / "_detection_build.json").read_text(encoding="utf-8")
+    )
+    assert summary["input_measurement_rows"] == len(conformed)
+    assert summary["built_at_utc"].endswith("+00:00")
 
     features = read_event_features(gold)
     assert not features.empty

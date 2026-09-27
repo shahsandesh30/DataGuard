@@ -15,8 +15,8 @@ Five stages. They are not connected by function calls — they are connected by
 
 ```
 OpenAQ S3 ──ingest──> bronze/ ──conform──> silver/ ──quality──> gold/layer1/ ─┐
-                         │                                                     ├─fuse─> gold/fusion/
-                         └──────────────detect──────────────> gold/layer2/ ────┘
+                                            │                                  ├─fuse─> gold/fusion/
+                                            └──detect──> gold/layer2/ ─────────┘
 ```
 
 That is why every stage runs standalone. The contract between any two stages is
@@ -46,6 +46,17 @@ main()  →  _parse_args()  →  _roots()  →  COMMANDS[stage](args)
    and friends. This is the only place that decision is made.
 3. **`COMMANDS`** dispatches to `_ingest / _conform / _quality / _detect / _fuse`.
    `run` loops over all five in order.
+
+The conform stage refuses to publish silver when it finds no bronze files or
+no usable measurement rows. Because that check happens before the first write,
+a bad root or empty delivery cannot erase the last valid silver or gold data.
+Missing individual source files remain manifest records and quality signals;
+they do not fail the whole scheduled job.
+
+`glue/run_pipeline.py` is the scheduler adapter. By default it processes the
+four demo stations over a seven-day retry window ending three days ago. This
+overlap picks up late OpenAQ files while keeping every derived layer a complete,
+authoritative rebuild from the history already present in bronze.
 
 A zone root is a plain string. `data/silver` is a folder; `s3://bucket/silver`
 is an S3 prefix. Nothing downstream knows which — `storage.py` branches on the
@@ -216,15 +227,15 @@ location reached 14 station-days, so the stage ran rules-only and said so.
 
 ---
 
-## 4. `detect` — bronze → gold/layer2
+## 4. `detect` — silver → gold/layer2
 
 `_detect` → `build_detection` (`pipelines/detection/build.py`)
 
 > This package is owned by another team member. Treat it as read-only.
 
 ```
-read_conformed(bronze)  →  build_event_features  →  weak_labels
-                        →  fit_ensemble  →  score_events
+read_silver(silver)  →  build_event_features  →  weak_labels
+                     →  fit_ensemble  →  score_events
 ```
 
 Features are per `(locationid, date_local, parameter)`: baseline deviation,
@@ -235,13 +246,10 @@ likely a fault. Detectors: **IsolationForest + LOF + DBSCAN**, gated on
 
 Two things to know about how it connects:
 
-- It calls `read_conformed`, which **re-conforms bronze in memory** rather than
-  reading the silver zone. Same conformance code, but the two layers can
-  silently disagree about the same day. Migrating it is a known follow-up.
-- `_detect` in `__main__.py` has an `if storage.is_s3(gold)` branch that runs
-  Layer 2 into a local temp directory and republishes the two tables. That
-  exists only because `detection/build.py` writes its summary with
-  `Path.write_text`, which cannot address S3.
+- It reads the materialised silver zone, so Layer 1 and Layer 2 evaluate the
+  same conformed measurements.
+- Layer 2 writes through `pipelines.storage`, so the same code supports local
+  directories and S3 roots.
 
 **Expect:**
 

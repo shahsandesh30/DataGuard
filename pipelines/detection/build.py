@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from pipelines import storage
+from pipelines.build_metadata import build_summary_json
 from pipelines.config import MIN_EVENT_ROWS, load_settings
 from pipelines.conformance.conform import read_silver
 from pipelines.detection.ensemble import EVENT_ALERT_COLUMNS, fit_ensemble, score_events
@@ -55,6 +55,7 @@ def build_detection(
     gold = storage.join(gold_root or settings.gold_root, "layer2")
 
     silver = read_silver(silver)
+    input_measurement_rows = int(len(silver))
     features = build_event_features(silver)
     labels = weak_labels(features, silver)
 
@@ -82,7 +83,8 @@ def build_detection(
     )
 
     storage.write_text(
-        storage.join(gold, "_detection_build.json"), json.dumps(result.__dict__, indent=2) + "\n"
+        storage.join(gold, "_detection_build.json"),
+        build_summary_json(result, input_measurement_rows=input_measurement_rows),
     )
 
     logger.info(

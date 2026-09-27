@@ -28,12 +28,26 @@ load_dotenv()
 OPENAQ_ARCHIVE_BUCKET = "openaq-data-archive"
 OPENAQ_ARCHIVE_REGION = "us-east-1"
 
-# Stations to ingest by default: four Sydney metro sites plus one spare.
+# Sydney metro stations used by ingestion and Layer 2's regional features.
 # Spelling is load-bearing — pipelines/detection imports this name.
-DEFAULT_locationidS = [1707188,4719604,2455393,6430870,2392564,6209161,
-                       1601414,2904356,3229203,1544061,
-                       3358634,2455394,3772130,6092254,6146402,6123216
-                       ]
+DEFAULT_locationidS = [
+    1707188,
+    4719604,
+    2455393,
+    6430870,
+    2392564,
+    6209161,
+    1601414,
+    2904356,
+    3229203,
+    1544061,
+    3358634,
+    2455394,
+    3772130,
+    6092254,
+    6146402,
+    6123216,
+]
 
 # --------------------------------------------------------------------------- #
 # Layer 1 — data health
@@ -106,12 +120,8 @@ class Settings:
     """
 
     bronze_root: str = _zone("BRONZE_ROOT", "bronze")
-    # silver_root: str = _zone("SILVER_ROOT", "silver")
-    # gold_root: str = _zone("GOLD_ROOT", "gold")
-
-    # bronze_root: str = _env("BRONZE_BUCKET", "dataguard-openaq-bronze")
-    silver_root: str = _env("SILVER_BUCKET", "dataguard-openaq-silver")
-    gold_root: str = _env("GOLD_BUCKET", "dataguard-openaq-gold")
+    silver_root: str = _zone("SILVER_ROOT", "silver")
+    gold_root: str = _zone("GOLD_ROOT", "gold")
 
     # Used when a zone is on S3, and by pipelines/detection's Athena reads.
     glue_database: str = _env("GLUE_DATABASE", "dataguard")
