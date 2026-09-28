@@ -266,6 +266,7 @@ def test_glue_table_name_keeps_the_zone_prefix():
 
 def test_s3_write_uses_explicit_glue_table_name_when_given(monkeypatch):
     captured = {}
+    monkeypatch.setenv("GLUE_DATABASE", "test_catalog")
 
     class FakeS3:
         @staticmethod
@@ -275,7 +276,7 @@ def test_s3_write_uses_explicit_glue_table_name_when_given(monkeypatch):
     class FakeCatalog:
         @staticmethod
         def databases(limit=None):
-            return pd.DataFrame({"Database": ["dataguard_db"]})
+            return pd.DataFrame({"Database": ["test_catalog"]})
 
     monkeypatch.setattr(
         storage, "_wr", lambda: type("wr", (), {"s3": FakeS3, "catalog": FakeCatalog})
