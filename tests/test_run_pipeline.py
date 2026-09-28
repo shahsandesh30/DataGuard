@@ -169,3 +169,16 @@ def test_main_rejects_a_backwards_window(monkeypatch):
     monkeypatch.setattr(entry, "run_pipeline", _capture([]))
     with pytest.raises(SystemExit):
         entry.main(["--start", "2023-01-31", "--end", "2023-01-01"])
+
+
+def test_run_job_returns_normally_on_success(monkeypatch):
+    monkeypatch.setattr(entry, "main", lambda _argv: 0)
+
+    assert entry.run_job([]) is None
+
+
+def test_run_job_raises_a_non_system_exit_failure(monkeypatch):
+    monkeypatch.setattr(entry, "main", lambda _argv: 1)
+
+    with pytest.raises(RuntimeError, match="exit code 1"):
+        entry.run_job([])

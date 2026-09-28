@@ -177,5 +177,18 @@ def main(argv: list[str] | None = None) -> int:
             os.environ["GLUE_DATABASE"] = previous_database
 
 
+def run_job(argv: list[str] | None = None) -> None:
+    """Run under Glue without raising ``SystemExit(0)`` on success.
+
+    Glue's Spark launcher reports any ``SystemExit`` as a user-application
+    failure, including the zero exit raised by the usual CLI entry-point
+    pattern.  Preserve nonzero pipeline results as real job failures while
+    allowing a successful run to return normally.
+    """
+    exit_code = main(argv)
+    if exit_code:
+        raise RuntimeError(f"DataGuard pipeline failed with exit code {exit_code}")
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    run_job()
