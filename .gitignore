@@ -4,12 +4,14 @@ data/
 *.csv
 *.zip
 !docs/**/*.csv
+build/
 
 # Secrets
 .env
 *.pem
 credentials
 .aws/
+.streamlit/secrets.toml
 
 # Python
 __pycache__/

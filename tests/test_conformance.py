@@ -1,12 +1,15 @@
 import gzip
+import json
 import pathlib
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from pipelines.conformance.conform import (
     SILVER_COLUMNS,
+    EmptyBronzeError,
     build_silver,
     conform_measurements,
     discover_bronze_files,
@@ -128,6 +131,10 @@ def test_build_silver_from_gzipped_bronze(tmp_path: Path):
     assert len(silver) == 2
     assert list(silver.columns) == SILVER_COLUMNS
     assert (silver_root / "locationid=2178" / "year=2023" / "part-0.parquet").exists()
+    summary = json.loads((silver_root / "_build.json").read_text(encoding="utf-8"))
+    assert summary["input_files"] == 1
+    assert summary["rows"] == 2
+    assert summary["built_at_utc"].endswith("+00:00")
     assert (silver_root / "_build.json").exists()
 
 
@@ -170,6 +177,28 @@ def test_build_silver_rebuild_replaces_previous_output(tmp_path: Path):
     build_silver(bronze_root=bronze_root, silver_root=silver_root)
     assert len(read_silver(silver_root)) == 1
     assert len(list(silver_root.rglob("*.parquet"))) == 1
+
+
+def test_empty_bronze_refuses_to_replace_existing_silver(tmp_path: Path):
+    bronze_root = tmp_path / "bronze"
+    silver_root = tmp_path / "silver"
+    bronze_file = bronze_root / bronze_key(2178, date(2023, 1, 1))
+    bronze_file.parent.mkdir(parents=True)
+    bronze_file.write_bytes(
+        gzip.compress(
+            (
+                "locationid,sensors_id,location,datetime,lat,lon,parameter,units,value\n"
+                "2178,3919,Del Norte,2023-01-01T01:00:00-07:00,"
+                "35.1,-106.5,pm10,µg/m³,45.0\n"
+            ).encode()
+        )
+    )
+    build_silver(bronze_root=bronze_root, silver_root=silver_root)
+
+    with pytest.raises(EmptyBronzeError, match="No bronze CSV files"):
+        build_silver(bronze_root=tmp_path / "wrong-bronze", silver_root=silver_root)
+
+    assert len(read_silver(silver_root)) == 1
 
 
 def test_read_silver_of_missing_zone_returns_schema(tmp_path: Path):

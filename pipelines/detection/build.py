@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,13 +9,14 @@ from pathlib import Path
 import pandas as pd
 
 from pipelines import storage
+from pipelines.build_metadata import build_summary_json
 from pipelines.config import MIN_EVENT_ROWS, load_settings
 from pipelines.conformance.conform import read_silver
 from pipelines.detection.ensemble import EVENT_ALERT_COLUMNS, fit_ensemble, score_events
 from pipelines.detection.features import build_event_features, weak_labels
-from pipelines.quality.build import _write_partitioned
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class DetectionBuildResult:
@@ -27,27 +27,21 @@ class DetectionBuildResult:
     alerts_path: str
 
 
-def read_event_features(gold_root: Path | None = None) -> pd.DataFrame:
+def read_event_features(gold_root: str | Path | None = None) -> pd.DataFrame:
+    """Read Layer 2 features from either a local or S3 gold zone."""
     settings = load_settings()
-    root = Path(gold_root or settings.gold_root) / "layer2" / "event_features"
-    files = sorted(root.rglob("*.parquet"))
-    if not files:
-        return pd.DataFrame()
-    return pd.concat((pd.read_parquet(f) for f in files), ignore_index=True)
+    return storage.read_parquet(gold_root or settings.gold_root, "layer2/event_features")
 
 
-def read_event_alerts(gold_root: Path | None = None) -> pd.DataFrame:
+def read_event_alerts(gold_root: str | Path | None = None) -> pd.DataFrame:
+    """Read Layer 2 alerts from either a local or S3 gold zone."""
     settings = load_settings()
-    root = Path(gold_root or settings.gold_root) / "layer2" / "event_alerts"
-    files = sorted(root.rglob("*.parquet"))
-    if not files:
-        return pd.DataFrame()
-    return pd.concat((pd.read_parquet(f) for f in files), ignore_index=True)
+    return storage.read_parquet(gold_root or settings.gold_root, "layer2/event_alerts")
 
 
 def build_detection(
-    silver_root: Path | None = None,
-    gold_root: Path | None = None,
+    silver_root: str | Path | None = None,
+    gold_root: str | Path | None = None,
 ) -> DetectionBuildResult:
     """Compute Layer 2 features and ranked alerts, write to gold."""
     settings = load_settings()
@@ -55,6 +49,7 @@ def build_detection(
     gold = storage.join(gold_root or settings.gold_root, "layer2")
 
     silver = read_silver(silver)
+    input_measurement_rows = int(len(silver))
     features = build_event_features(silver)
     labels = weak_labels(features, silver)
 
@@ -78,11 +73,12 @@ def build_detection(
         alert_rows=int(len(alerts)),
         ensemble_trained=ensemble_trained,
         features_path=str(features_path),
-        alerts_path=str(alerts_path)
+        alerts_path=str(alerts_path),
     )
 
     storage.write_text(
-        storage.join(gold, "_detection_build.json"), json.dumps(result.__dict__, indent=2) + "\n"
+        storage.join(gold, "_detection_build.json"),
+        build_summary_json(result, input_measurement_rows=input_measurement_rows),
     )
 
     logger.info(

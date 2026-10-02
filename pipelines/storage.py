@@ -35,9 +35,8 @@ S3_PREFIX = "s3://"
 _S3_NOT_FOUND = {"404", "NoSuchKey", "NotFound", "404 Not Found"}
 
 # Path("s3://bucket") collapses the double slash and, on Windows, flips the
-# separators — so a root that has been round-tripped through pathlib arrives as
-# "s3:/bucket" or "s3:\bucket". pipelines/detection wraps its roots in Path()
-# before handing them back to us, so repair the URI rather than trusting it.
+# separators. Repair a URI that has been round-tripped through pathlib rather
+# than silently treating it as a local path.
 _MANGLED_S3 = re.compile(r"^s3:[\\/]+", re.IGNORECASE)
 
 
@@ -217,10 +216,8 @@ def _glue_table_name(target: str) -> str:
 
     ``s3://bucket/layer2/event_features`` becomes ``layer2_event_features``. The
     name is taken from the key rather than the caller's dataset argument because
-    the zone lives in the root — Layer 1 writes ``quality_metrics`` under a
-    ``gold/layer1`` root, and pipelines/detection registers its own
-    ``event_features`` table over ``s3://<silver>/derived/``. Glue rejects two
-    tables of one name pointing at different locations, so the prefix matters.
+    the zone lives in the root. Including prefixes such as ``layer1`` and
+    ``layer2`` keeps equally named datasets in different layers from colliding.
     """
     bucket, key = _bucket_and_key(target)
     return re.sub(r"[^a-z0-9_]+", "_", (key.strip("/") or bucket).lower()).strip("_")

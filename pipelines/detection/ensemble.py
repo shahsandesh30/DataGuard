@@ -55,7 +55,7 @@ def fit_ensemble(
     random_state: int = 42,
 ) -> dict | None:
     """Fit IF, LOF, and DBSCAN on scaled feature rows."""
-    if features is None or features.empty:
+    if features is None or len(features) < 2:
         return None
 
     matrix = _feature_matrix(features)
@@ -118,11 +118,15 @@ def score_events(
     dbscan_flags = models["dbscan_labels"] == -1
     dbscan_scores = dbscan_flags.astype(float)
 
-    agreement = if_preds.astype(int) + lof_flags.astype(int) + dbscan_flags.astype(int)
-    combined = agreement / 3.0 + (if_scores + lof_scores + dbscan_scores) / 3.0
+    if_flags = if_preds == -1
+    agreement = (
+        if_flags.astype(int) + lof_flags.astype(int) + dbscan_flags.astype(int)
+    )
+    detector_score = (if_scores + lof_scores + dbscan_scores) / 3.0
+    combined = (agreement / 3.0 + detector_score) / 2.0
 
     scored = features.copy()
-    scored["if_flag"] = if_preds == -1
+    scored["if_flag"] = if_flags
     scored["lof_flag"] = lof_flags
     scored["dbscan_flag"] = dbscan_flags
     scored["agreement_count"] = agreement
@@ -133,8 +137,15 @@ def score_events(
     scored["weak_label"] = weak_label.reindex(features.index, fill_value=False).values
     scored["feature_snapshot"] = scored.apply(feature_snapshot, axis=1)
 
+    # A ranked alert must have at least one detector vote. Keeping normal rows
+    # merely because they are in a day's top K turns the feature table into an
+    # alert table and makes every station-day look anomalous.
+    candidates = scored[scored["agreement_count"] > 0]
+
     rows: list[pd.DataFrame] = []
-    for (_region, date_local), group in scored.groupby(["region_id", "date_local"], sort=False):
+    for (_region, _date_local), group in candidates.groupby(
+        ["region_id", "date_local"], sort=False
+    ):
         top = group.nlargest(min(top_k, len(group)), "alert_score")
         top = top.copy()
         top["rank"] = range(1, len(top) + 1)

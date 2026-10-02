@@ -1,0 +1,32 @@
+[project]
+name = "dataguard"
+version = "0.1.0"
+description = "Trust-aware anomaly detection for untrusted air-quality data pipelines"
+requires-python = ">=3.11,<3.14"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Pinned so CI and every laptop agree; without this ruff's default set drifts
+# between versions and the advisory lint job reports different counts per run.
+select = [
+    "E",  # pycodestyle
+    "F",  # pyflakes
+    "I",  # import sorting
+    "UP", # pyupgrade
+    "B",  # bugbear
+    "SIM", # flake8-simplify
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Streamlit scripts must extend sys.path before importing the local package.
+"dashboard/app.py" = ["E402"]
+# Same for the scheduled entry point: Glue runs it as a loose script, so the
+# repo root is added to sys.path before `pipelines` can be imported.
+"glue/run_pipeline.py" = ["E402"]

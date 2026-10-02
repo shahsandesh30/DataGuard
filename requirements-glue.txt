@@ -1,0 +1,7 @@
+# Glue 5.1 already supplies boto3, NumPy, pandas, and PyArrow. These are the
+# additional pinned modules needed by the DataGuard job on Python 3.11.
+awswrangler==3.17.1
+joblib==1.5.3
+python-dotenv==1.2.3
+scikit-learn==1.9.0
+scipy==1.17.1

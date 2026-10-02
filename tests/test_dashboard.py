@@ -1,6 +1,16 @@
+import json
+
 import pandas as pd
 
-from dashboard.data import build_station_status, filter_by_date, load_stations
+from dashboard.data import (
+    build_station_status,
+    filter_by_date,
+    latest_build_time,
+    load_build_summaries,
+    load_stations,
+)
+from dashboard.runtime import apply_runtime_secrets, is_public_dashboard
+from pipelines import storage
 
 
 def _stations() -> pd.DataFrame:
@@ -72,3 +82,40 @@ def test_filter_by_date_without_date_returns_frame_unchanged():
 
 def test_load_stations_empty_without_silver(tmp_path):
     assert load_stations(tmp_path / "silver").empty
+
+
+def test_build_summaries_report_latest_success(tmp_path):
+    silver, gold = tmp_path / "silver", tmp_path / "gold"
+    storage.write_text(
+        storage.join(silver, "_build.json"),
+        json.dumps({"built_at_utc": "2026-01-08T01:00:00+00:00"}),
+    )
+    storage.write_text(
+        storage.join(gold, "fusion/_build.json"),
+        json.dumps({"built_at_utc": "2026-01-08T02:00:00+00:00"}),
+    )
+
+    summaries = load_build_summaries(silver, gold)
+    assert set(summaries) == {"silver", "fusion"}
+    assert latest_build_time(summaries).isoformat() == "2026-01-08T02:00:00+00:00"
+
+
+def test_partial_build_is_not_reported_as_pipeline_success():
+    summaries = {"silver": {"built_at_utc": "2026-01-08T03:00:00+00:00"}}
+    assert latest_build_time(summaries) is None
+
+
+def test_runtime_secrets_are_explicit_and_public_mode_is_boolean():
+    environ = {"UNRELATED": "keep"}
+    apply_runtime_secrets(
+        {
+            "SILVER_ROOT": "s3://bucket/silver",
+            "DATAGUARD_PUBLIC_DASHBOARD": "true",
+            "UNRELATED": "discard",
+        },
+        environ,
+    )
+
+    assert environ["SILVER_ROOT"] == "s3://bucket/silver"
+    assert environ["UNRELATED"] == "keep"
+    assert is_public_dashboard(environ)

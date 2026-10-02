@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import json
 import logging
+
 import numpy as np
 import pandas as pd
 
 from pipelines.config import (
-    DEFAULT_locationidS,
     LAYER2_PM_PARAMETERS,
     LAYER2_REGION_ID,
     WEAK_LABEL_MIN_LOCATIONS,
     WEAK_LABEL_PM25_RATIO,
+    DEFAULT_locationidS,
 )
 from pipelines.detection.baseline import (
     hourly_roc_max,
@@ -255,7 +256,11 @@ def _add_spatial_features(df: pd.DataFrame, knn: pd.DataFrame) -> pd.DataFrame:
     pairs = knn.merge(small, on="locationid", how="inner")
     pairs = pairs.rename(columns={"value": "value_self", "deviation_zscore": "zscore_self"})
     nbr_vals = small.rename(
-        columns={"locationid": "locationid_nbr", "value": "value_nbr", "deviation_zscore": "zscore_nbr"}
+        columns={
+            "locationid": "locationid_nbr",
+            "value": "value_nbr",
+            "deviation_zscore": "zscore_nbr",
+        }
     )
     pairs = pairs.merge(nbr_vals, on=["locationid_nbr", "parameter", "datetime"], how="inner")
  
@@ -324,7 +329,7 @@ HOURLY_REQUIRED_COLUMNS = ["locationid", "datetime", "parameter", "value", "lati
  
  
 def build_hourly_event_features(silver: pd.DataFrame) -> pd.DataFrame:
-    """Hourly features from Athena silver (`locationid`, `datetime`, lat/lon).
+    """Hourly features from materialised silver (`locationid`, `datetime`, lat/lon).
  
     Independent of :func:`build_event_features` (which works per station-day).
     Expects a datetime64 ``datetime`` column in local time and ``latitude`` /
@@ -457,9 +462,14 @@ def build_event_features(conformed: pd.DataFrame) -> pd.DataFrame:
         mean_shift = daily_mean / stats["median"] if stats["median"] > 0 else 0.0
 
         regional_means = _regional_daily_means(conformed, date_local, parameter, region_locations)
-        if regional_means:
-            regional_mean = float(np.mean(list(regional_means.values())))
-            regional_std = float(np.std(list(regional_means.values()))) if len(regional_means) > 1 else 1.0
+        peer_means = {
+            loc: mean for loc, mean in regional_means.items() if loc != locationid
+        }
+        if peer_means:
+            regional_mean = float(np.mean(list(peer_means.values())))
+            regional_std = (
+                float(np.std(list(peer_means.values()))) if len(peer_means) > 1 else 1.0
+            )
             peer_z = (daily_mean - regional_mean) / max(regional_std, 1e-6)
         else:
             regional_mean = daily_mean
@@ -470,13 +480,19 @@ def build_event_features(conformed: pd.DataFrame) -> pd.DataFrame:
             trail = trailing_daily_means(conformed, loc, parameter, date_local)
             if not trail.empty:
                 trailing_regional.append(float(trail.median()))
-        trailing_regional_median = float(np.median(trailing_regional)) if trailing_regional else regional_mean
+        trailing_regional_median = (
+            float(np.median(trailing_regional)) if trailing_regional else regional_mean
+        )
         reg_agreement = _regional_agreement(
             conformed, date_local, parameter, region_locations, trailing_regional_median
         )
         spatial_isolation = max(0.0, abs(peer_z)) * (1.0 - reg_agreement)
 
-        co_move = _pm_co_movement(conformed, locationid, date_local) if parameter in ("pm25", "pm10") else 0.0
+        co_move = (
+            _pm_co_movement(conformed, locationid, date_local)
+            if parameter in ("pm25", "pm10")
+            else 0.0
+        )
 
         rows.append(
             {

@@ -17,7 +17,6 @@ so ``original_unit`` is carried alongside the converted value.
 
 from __future__ import annotations
 
-import json
 import logging
 import zlib
 from dataclasses import dataclass
@@ -26,10 +25,15 @@ from pathlib import Path
 import pandas as pd
 
 from pipelines import storage
+from pipelines.build_metadata import build_summary_json
 from pipelines.config import SILVER_GLUE_TABLE, load_settings
 from pipelines.conformance.units import canonical_parameter, convert_series
 
 logger = logging.getLogger(__name__)
+
+
+class EmptyBronzeError(RuntimeError):
+    """Raised before writing silver when bronze has no usable measurements."""
 
 SILVER_COLUMNS = [
     "locationid",
@@ -209,15 +213,6 @@ def _conform_all(bronze_root: str | Path) -> tuple[pd.DataFrame, list[str], list
     return combined, files, failed
 
 
-def read_conformed(silver_root: str | Path | None = None) -> pd.DataFrame:
-    """Read and conform every bronze file in memory.
-
-    This is the only place bronze CSVs are parsed. ``build_silver``
-    materialises the result; downstream stages read the silver zone instead.
-    """
-    settings = load_settings()
-    return storage.read_parquet(silver_root or settings.silver_root, "silver-data")
-
 def read_silver(silver_root: str | Path | None = None) -> pd.DataFrame:
     """Read the silver zone back as one frame."""
     settings = load_settings()
@@ -246,10 +241,15 @@ def build_silver(
     """Conform every bronze file and write the silver zone."""
     settings = load_settings()
     bronze = bronze_root or settings.bronze_root
-    s_root = silver_root or settings.silver_root
-    silver = storage.join(silver_root or settings.silver_root, "silver-data")
+    silver = silver_root or settings.silver_root
 
     combined, files, failed = _conform_all(bronze)
+    if not files:
+        raise EmptyBronzeError(f"No bronze CSV files found under {storage.normalize(bronze)}")
+    if combined.empty:
+        raise EmptyBronzeError(
+            f"Bronze contained no usable measurement rows ({len(failed)} files failed)"
+        )
     write_silver(combined, silver)
 
     result = SilverBuildResult(
@@ -266,8 +266,9 @@ def build_silver(
     )
 
     storage.write_text(
-        storage.join(s_root, "_silver_build.json"), json.dumps(result.__dict__, indent=2) + "\n"
+        storage.join(silver, "_build.json"),
+        build_summary_json(result, input_files=len(files)),
     )
 
-    logger.info("Silver built: %s rows from %s files -> %s", len(combined), len(files), s_root)
+    logger.info("Silver built: %s rows from %s files -> %s", len(combined), len(files), silver)
     return result

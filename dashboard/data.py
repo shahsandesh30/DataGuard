@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
+from pipelines import storage
+from pipelines.config import load_settings
 from pipelines.conformance.conform import read_silver
-from pipelines.fusion.build import read_event_alerts, read_trust_alerts
+from pipelines.detection.build import read_event_alerts
+from pipelines.fusion.build import read_trust_alerts
 from pipelines.quality.build import read_quality_incidents, read_quality_metrics
 
 STATION_COLUMNS = ["locationid", "location_name", "latitude", "longitude"]
@@ -21,6 +26,13 @@ STATUS_COLORS = {
 
 # Lower sorts first on the map table — worst news at the top.
 STATUS_PRIORITY = {"escalated": 0, "quarantined": 1, "quality_only": 2, "monitored": 3}
+
+BUILD_SUMMARIES = {
+    "silver": "_build.json",
+    "layer1": "layer1/_build.json",
+    "layer2": "layer2/_detection_build.json",
+    "fusion": "fusion/_build.json",
+}
 
 _SEVERITY_RANK = {"high": 3, "medium": 2, "low": 1}
 
@@ -56,6 +68,37 @@ def load_dashboard_frames(gold_root: str | Path | None = None) -> dict[str, pd.D
         "trust_alerts": read_trust_alerts(gold_root),
         "event_alerts": read_event_alerts(gold_root),
     }
+
+
+def load_build_summaries(
+    silver_root: str | Path | None = None,
+    gold_root: str | Path | None = None,
+) -> dict[str, dict]:
+    """Load successful stage summaries used for dashboard freshness checks."""
+    settings = load_settings()
+    silver = silver_root or settings.silver_root
+    gold = gold_root or settings.gold_root
+    roots = {"silver": silver, "layer1": gold, "layer2": gold, "fusion": gold}
+    summaries: dict[str, dict] = {}
+    for stage, relative_path in BUILD_SUMMARIES.items():
+        text = storage.read_text(storage.join(roots[stage], relative_path))
+        if text:
+            try:
+                summaries[stage] = json.loads(text)
+            except json.JSONDecodeError:
+                summaries[stage] = {}
+    return summaries
+
+
+def latest_build_time(summaries: dict[str, dict]) -> datetime | None:
+    """Return the final fusion timestamp, which proves the whole run succeeded."""
+    value = summaries.get("fusion", {}).get("built_at_utc")
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def available_dates(*frames: pd.DataFrame) -> list[str]:

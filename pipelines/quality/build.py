@@ -7,7 +7,6 @@ properties of the delivered file rather than of the readings inside it.
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from pipelines import storage
+from pipelines.build_metadata import build_summary_json
 from pipelines.config import MIN_STATION_DAYS, load_settings
 from pipelines.conformance.conform import read_silver
 from pipelines.quality.detector import (
@@ -27,15 +27,6 @@ from pipelines.quality.metrics import compute_sensor_day_metrics, compute_statio
 from pipelines.quality.rules import apply_quality_rules
 
 logger = logging.getLogger(__name__)
-
-
-def _write_partitioned(
-    frame: pd.DataFrame, root: str | Path, name: str, _key_cols: list[str] | None = None
-) -> str:
-    """Shim: ``pipelines.detection.build`` imports this name.
-    """
-    return storage.write_parquet(frame, root, name)
-
 
 @dataclass
 class QualityBuildResult:
@@ -126,7 +117,8 @@ def build_quality(
         output_path=storage.normalize(gold),
     )
     storage.write_text(
-        storage.join(gold, "_quality_build.json"), json.dumps(result.__dict__, indent=2) + "\n"
+        storage.join(gold, "_build.json"),
+        build_summary_json(result, input_measurement_rows=int(len(measurements))),
     )
     logger.info(
         "Layer 1 built: %s station-days, %s rule incidents, %s model incidents -> %s",

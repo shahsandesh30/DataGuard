@@ -6,7 +6,7 @@ wrote.
     ingest   OpenAQ archive -> bronze         (raw files, unchanged)
     conform  bronze         -> silver         (canonical units, types, timestamps)
     quality  silver         -> gold/layer1    (Layer 1: is the data healthy?)
-    detect   bronze         -> gold/layer2    (Layer 2: did something happen?)
+    detect   silver         -> gold/layer2    (Layer 2: did something happen?)
     fuse     gold           -> gold/fusion    (trust score, escalate/quarantine)
 
     python -m pipelines run --locations 2178 --start 2023-01-01 --end 2023-01-31
@@ -19,8 +19,8 @@ BRONZE_ROOT / SILVER_ROOT / GOLD_ROOT in .env::
                                 --silver-root s3://dataguard-openaq-silver
 
 Parquet written to S3 is registered in the Glue Catalog, so Athena sees the same
-tables. Layer 2 still conforms bronze in memory rather than reading silver; it is
-owned by another team member, so migrating it is a follow-up.
+tables. Every downstream stage reads the materialised output of the preceding
+stage through the shared local/S3 storage layer.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from datetime import date
 
 from pipelines import storage
 from pipelines.config import DEFAULT_locationidS, load_settings
-from pipelines.conformance.conform import build_silver
+from pipelines.conformance.conform import EmptyBronzeError, build_silver
 from pipelines.detection.build import build_detection
 from pipelines.fusion.build import build_fusion
 from pipelines.ingestion.fetch import fetch_range
@@ -107,7 +107,11 @@ def _ingest(args: argparse.Namespace) -> int:
 
 def _conform(args: argparse.Namespace) -> int:
     bronze, silver, _ = _roots(args)
-    result = build_silver(bronze_root=bronze, silver_root=silver)
+    try:
+        result = build_silver(bronze_root=bronze, silver_root=silver)
+    except EmptyBronzeError as exc:
+        logging.error("Silver build refused to replace existing data: %s", exc)
+        return 1
     logging.info(
         "Silver: %s rows, %s files read, %s failed -> %s",
         result.rows,
@@ -136,12 +140,12 @@ def _detect(args: argparse.Namespace) -> int:
     _, silver, gold = _roots(args)
     result = build_detection(silver_root=silver, gold_root=gold)
     logging.info(
-        "Layer 2: %s feature rows, %s alerts (trained=%s) -> %s",
+        "Layer 2: %s feature rows, %s alerts (trained=%s) -> %s, %s",
         result.feature_rows,
         result.alert_rows,
         result.ensemble_trained,
         result.features_path,
-        result.alert_path
+        result.alerts_path,
     )
     return 0
 
@@ -175,10 +179,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command != "run":
         return COMMANDS[args.command](args)
 
-    exit_code = 0
     for stage in STAGES:
-        exit_code = COMMANDS[stage](args) or exit_code
-    return exit_code
+        exit_code = COMMANDS[stage](args)
+        if exit_code:
+            logging.error("Pipeline stopped after %s failed", stage)
+            return exit_code
+    return 0
 
 
 if __name__ == "__main__":

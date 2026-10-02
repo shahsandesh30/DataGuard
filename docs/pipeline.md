@@ -3,8 +3,8 @@
 A walkthrough of what executes, in which file, and what you should see at each
 stage. For *why* the system is shaped this way, see [architecture.md](architecture.md).
 
-Everything below matches a real local run: a full January 2026 for four Sydney
-stations.
+Count examples below match the latest audited local snapshot: 342 bronze files
+covering 14 stations from 2026-01-01 through 2026-02-01.
 
 ---
 
@@ -15,8 +15,8 @@ Five stages. They are not connected by function calls — they are connected by
 
 ```
 OpenAQ S3 ──ingest──> bronze/ ──conform──> silver/ ──quality──> gold/layer1/ ─┐
-                         │                                                     ├─fuse─> gold/fusion/
-                         └──────────────detect──────────────> gold/layer2/ ────┘
+                                            │                                  ├─fuse─> gold/fusion/
+                                            └──detect──> gold/layer2/ ─────────┘
 ```
 
 That is why every stage runs standalone. The contract between any two stages is
@@ -46,6 +46,17 @@ main()  →  _parse_args()  →  _roots()  →  COMMANDS[stage](args)
    and friends. This is the only place that decision is made.
 3. **`COMMANDS`** dispatches to `_ingest / _conform / _quality / _detect / _fuse`.
    `run` loops over all five in order.
+
+The conform stage refuses to publish silver when it finds no bronze files or
+no usable measurement rows. Because that check happens before the first write,
+a bad root or empty delivery cannot erase the last valid silver or gold data.
+Missing individual source files remain manifest records and quality signals;
+they do not fail the whole scheduled job.
+
+`glue/run_pipeline.py` is the scheduler adapter. By default it processes the
+four demo stations over a seven-day retry window ending three days ago. This
+overlap picks up late OpenAQ files while keeping every derived layer a complete,
+authoritative rebuild from the history already present in bronze.
 
 A zone root is a plain string. `data/silver` is a folder; `s3://bucket/silver`
 is an S3 prefix. Nothing downstream knows which — `storage.py` branches on the
@@ -126,7 +137,7 @@ converted reading from a mislabelled one.
 **Expect:**
 
 ```
-INFO Silver: 9779 rows, 94 files read, 0 failed -> data/silver
+INFO Silver: 38449 rows, 342 files read, 0 failed -> data/silver
 ```
 
 **Lands at:** `data/silver/locationid=<ID>/year=<YYYY>/part-0.parquet` +
@@ -142,7 +153,7 @@ INFO Silver: 9779 rows, 94 files read, 0 failed -> data/silver
 
 ### 3a. `read_silver`
 
-The 9,779 conformed rows back out.
+The 38,449 conformed rows back out.
 
 ### 3b. `compute_sensor_day_metrics` — `metrics.py`
 
@@ -154,7 +165,7 @@ unit mismatches.
 **trailing 7-day median cadence**, not a fixed 24. A station that reports four
 times a day is not 83% incomplete.
 
-→ **426 sensor-days.**
+→ **1,701 sensor-days.**
 
 ### 3c. `compute_station_day_metrics` — `metrics.py`
 
@@ -169,7 +180,7 @@ come from the readings** — this is why bronze is read here:
 
 Plus `sensor_dropout_count`: sensors that reported yesterday and not today.
 
-→ **98 station-days, 18 columns.**
+→ **353 station-days, 18 columns.**
 
 ### 3d. `apply_quality_rules` — `rules.py`
 
@@ -205,7 +216,7 @@ rules missed.
 **Expect:**
 
 ```
-INFO Layer 1: 98 station-days, 13 rule incidents, 1 model incidents (trained=True) -> data\gold\layer1
+INFO Layer 1: 353 station-days, 139 rule incidents, 2 model incidents (trained=True) -> data\gold\layer1
 ```
 
 **`trained=False` is expected on a small sample, not a bug.** It means no
@@ -216,15 +227,13 @@ location reached 14 station-days, so the stage ran rules-only and said so.
 
 ---
 
-## 4. `detect` — bronze → gold/layer2
+## 4. `detect` — silver → gold/layer2
 
 `_detect` → `build_detection` (`pipelines/detection/build.py`)
 
-> This package is owned by another team member. Treat it as read-only.
-
 ```
-read_conformed(bronze)  →  build_event_features  →  weak_labels
-                        →  fit_ensemble  →  score_events
+read_silver(silver)  →  build_event_features  →  weak_labels
+                     →  fit_ensemble  →  score_events
 ```
 
 Features are per `(locationid, date_local, parameter)`: baseline deviation,
@@ -233,20 +242,23 @@ smoke event lifts several stations together, while one station alone is more
 likely a fault. Detectors: **IsolationForest + LOF + DBSCAN**, gated on
 `MIN_EVENT_ROWS` (20).
 
+`agreement_count` is the number of detector votes (0–3). The normalized
+`alert_score` averages agreement share with the mean detector score and remains
+in `[0, 1]`. Only rows with at least one vote enter `event_alerts`; each
+region-day is then capped at the top 10. Weak labels are evaluation metadata and
+never decide whether a row becomes an alert.
+
 Two things to know about how it connects:
 
-- It calls `read_conformed`, which **re-conforms bronze in memory** rather than
-  reading the silver zone. Same conformance code, but the two layers can
-  silently disagree about the same day. Migrating it is a known follow-up.
-- `_detect` in `__main__.py` has an `if storage.is_s3(gold)` branch that runs
-  Layer 2 into a local temp directory and republishes the two tables. That
-  exists only because `detection/build.py` writes its summary with
-  `Path.write_text`, which cannot address S3.
+- It reads the materialised silver zone, so Layer 1 and Layer 2 evaluate the
+  same conformed measurements.
+- Layer 2 writes through `pipelines.storage`, so the same code supports local
+  directories and S3 roots.
 
 **Expect:**
 
 ```
-INFO Layer 2: 164 feature rows, 164 alerts (trained=True) -> data\gold\layer2
+INFO Layer 2: 995 feature rows, 253 alerts (trained=True) -> data\gold\layer2
 ```
 
 **Lands at:** `gold/layer2/event_features`, `event_alerts`, plus
@@ -278,11 +290,11 @@ Inside `fuse`:
 **Expect:**
 
 ```
-INFO Fusion: 164 alerts (147 escalated, 17 quarantined) -> data\gold\fusion
+INFO Fusion: 253 alerts (181 escalated, 72 quarantined) -> data\gold\fusion
 ```
 
-Trust scores span 0.105 – 1.000. The 17 quarantines break down as R2 ×9,
-R4+R7 ×7, M1 ×1.
+Trust scores span 0.055–0.905. Every fusion row corresponds to a Layer 2 row
+with at least one detector vote.
 
 > ⚠️ **Fusion is alert-driven.** No Layer 2 alerts means no fusion rows, *even if
 > Layer 1 found plenty*. Those Layer-1-only findings are not lost — the dashboard
@@ -312,7 +324,7 @@ cat data/gold/fusion/_build.json            # escalated vs quarantined
 
 The fastest sanity check is the chain of row counts:
 
-**94 files → 9,779 rows → 426 sensor-days → 98 station-days → 164 alerts → 164 fused.**
+**342 files → 38,449 rows → 1,701 sensor-days → 353 station-days → 253 alerts → 253 fused.**
 
 If any link collapses to zero, that is the stage to open.
 

@@ -37,7 +37,7 @@ state between them, so any stage can be re-run on its own.
 | `ingest` | OpenAQ public archive | `bronze/` | Copies daily `.csv.gz` files, byte for byte. Logs every attempt — including files that were *missing*, because a gap in the source is itself a signal. |
 | `conform` | `bronze/` | `silver/` | One harmonised table: canonical names and units, parsed timestamps, de-duplicated. Nothing is dropped. |
 | `quality` | `silver/` + `bronze/` | `gold/layer1/` | **Layer 1.** Per-sensor-day and per-station-day metrics → rules → Isolation Forest. |
-| `detect` | `bronze/` | `gold/layer2/` | **Layer 2.** PM features per station-day → IF + LOF + DBSCAN ensemble → ranked alerts. |
+| `detect` | `silver/` | `gold/layer2/` | **Layer 2.** PM features per station-day → IF + LOF + DBSCAN ensemble → ranked alerts. |
 | `fuse` | `gold/` | `gold/fusion/` | Joins the two on (station, day). `trust = alert_score × (1 − penalty)`. |
 
 [`docs/pipeline.md`](docs/pipeline.md) traces this properly: which file runs at
@@ -61,6 +61,8 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
+For development (tests and lint), install `requirements-dev.txt` instead.
+
 Everything defaults to the local `data/` directory. No AWS account is needed.
 
 ```bash
@@ -78,6 +80,21 @@ python -m pipelines fuse
 streamlit run dashboard/app.py
 ```
 
+For a scheduled incremental run, use the small scheduler entry point. With no
+dates it retries a seven-day window ending three days ago, so newly published
+or late archive files are picked up without maintaining separate state:
+
+```bash
+python glue/run_pipeline.py
+python glue/run_pipeline.py --start 2026-01-01 --end 2026-01-31  # backfill
+```
+
+The demo AWS setup, artifact upload, Glue job, daily EventBridge schedule,
+failure alerts, and Streamlit deployment are documented in
+[`docs/aws-deployment.md`](docs/aws-deployment.md). The helper scripts generate
+the account-specific policies and package the pipeline; AWS creation remains a
+deliberate manual step for restricted/AWS Academy accounts.
+
 Both models are gated on history — Layer 1's Isolation Forest needs 14
 station-days for some location, Layer 2's ensemble needs 20 feature rows. Below
 that a stage runs rules-only and says so in its log line, rather than fitting on
@@ -92,7 +109,7 @@ pipelines/
   ingestion/        OpenAQ archive -> bronze
   conformance/      bronze -> silver  (conform.py, units.py)
   quality/          Layer 1  (metrics.py -> rules.py -> detector.py -> build.py)
-  detection/        Layer 2  — owned by another team member, treat as read-only
+  detection/        Layer 2  (features.py -> ensemble.py -> build.py)
   fusion/           trust scoring  (trust_score.py, build.py)
   __main__.py       the CLI
 dashboard/app.py    Streamlit: alerts, Layer 1 health, station map
@@ -107,8 +124,9 @@ tests/              pytest; no test needs AWS credentials
 | Silver | `data/silver/locationid=<ID>/year=<YYYY>/part-0.parquet` | Parquet |
 | Gold | `data/gold/{layer1,layer2,fusion}/<table>/locationid=<ID>/year=<YYYY>/` | Parquet |
 
-Each zone also holds a `_build.json` summary of the last run, and bronze holds
-`_manifest.jsonl`, the arrival log that `quality` reads.
+Silver, Layer 1, and fusion hold a `_build.json` summary of the last run; Layer
+2 retains its existing `_detection_build.json`. Bronze holds `_manifest.jsonl`,
+the arrival log that `quality` reads.
 
 **Silver schema** (12 columns): `locationid`, `sensor_id`, `location_name`,
 `datetime` (UTC), `datetime_local`, `date_local`, `latitude`, `longitude`,
@@ -139,9 +157,8 @@ Athena sees it with no crawler run: `silver_data`, `layer1_quality_metrics`,
 `layer1_quality_sensor_metrics`, `layer1_quality_incidents`,
 `layer2_event_features`, `layer2_event_alerts`, `fusion_trust_alerts`.
 
-Silver registers as `silver_data` on purpose — that is the table
-`pipelines/detection/io.py` queries, so Layer 2 reads the silver this pipeline
-produced. Reads go straight to S3 rather than through Athena: same bytes, no
+Silver registers as `silver_data` for Athena users. The pipeline itself reads
+silver and gold directly through the shared storage layer: same bytes, no
 workgroup needed, no per-query charge.
 
 ## Documentation
@@ -153,29 +170,32 @@ workgroup needed, no per-query charge.
 | [`docs/data-source.md`](docs/data-source.md) | OpenAQ, the archive layout, and the documented degradation events E1-E8 |
 | [`docs/risk-register.md`](docs/risk-register.md) | Project risks and the mid-project go/no-go gate |
 | [`models/`](models/) | Model cards for both layers, and the fusion trust-score spec |
+| [`docs/aws-deployment.md`](docs/aws-deployment.md) | Demo deployment: S3, Glue 5.1, EventBridge Scheduler, SNS, and Streamlit |
 | [`CLAUDE.md`](CLAUDE.md) | Repo conventions and gotchas, for anyone (or anything) editing the code |
 
 ## Tests
 
 ```bash
-python -m pytest                                  # 66 tests
-python -m ruff check pipelines dashboard tests
+python -m pytest                                  # 89 tests
+python -m ruff check pipelines dashboard tests glue scripts
 ```
 
 The S3 path is tested against a fake awswrangler, so the suite runs with no
-credentials. Ruff reports 9 findings, all inside `pipelines/detection/`.
+credentials. CI runs the same checks on Python 3.11 and also import-checks the
+Glue source ZIP. The same lint gate now covers Layer 2 as well as the rest of
+the pipeline.
 
 ## Where it stands
 
-Current local run — a full January 2026 for four Sydney stations:
+Latest audited local run over the current bronze snapshot:
 
 | | |
 |---|---|
-| Bronze | 94 files (90 copied, 31 missing at source) |
-| Silver | 9,779 rows, 5 parameters |
-| Layer 1 | 98 station-days → 13 rule incidents + 1 model incident |
-| Layer 2 | 164 feature rows → 164 ranked alerts |
-| Fusion | 164 alerts — **147 escalated, 17 quarantined** |
+| Bronze | 342 data files across 14 stations |
+| Silver | 38,449 rows across 32 local dates |
+| Layer 1 | 353 station-days → 139 rule incidents + 2 model incidents |
+| Layer 2 | 995 feature rows → 253 detector-backed alerts |
+| Fusion | 253 alerts — **181 escalated, 72 quarantined** |
 
 | Phase | Gate | Status |
 |---|---|---|
@@ -193,10 +213,10 @@ Current local run — a full January 2026 for four Sydney stations:
    each one. Until this exists, "it works" is an assertion, not a result.
 2. **Evaluate Layer 2** against the weak labels it already generates: precision
    at top-k, and how many alerts fusion correctly holds back.
-3. **Point Layer 2 at silver instead of bronze.** It re-conforms bronze in
-   memory today, so the two layers can silently disagree about the same day.
-4. **Restore rule R6 (freshness) behind a scheduled run** — see below.
-5. **Deploy the dashboard** and put the AWS resources under Terraform.
+3. **Run the documented AWS backfill and enable the schedule**, then verify one
+   success and one controlled failure alert.
+4. **Deploy the dashboard** from `main`. Add Terraform only after the demo is
+   stable; the current manual AWS setup is intentionally small.
 
 ### Why R6 is currently disabled
 
