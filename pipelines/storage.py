@@ -321,7 +321,8 @@ def write_model_parquet(
     for parameter, part in partitioned.groupby("parameter", sort=False):
         partition_dir = directory / f"parameter={parameter}"
         partition_dir.mkdir(parents=True, exist_ok=True)
-        part.to_parquet(partition_dir / f"run_{safe_run_id}.parquet", index=False, compression="snappy")
+        part.to_parquet(partition_dir / f"run_{safe_run_id}.parquet", 
+                        index=False, compression="snappy")
     return target
 
 

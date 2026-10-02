@@ -139,7 +139,7 @@ def build_detection(
     )
 
     logger.info(
-        "Layer 2 built: %s feature rows, %s alerts. Trained: %s. Skipped (insufficient rows): %s -> %s",
+        "Layer 2 built: %s feature rows, %s alerts. Trained: %s. Skipped: %s -> %s",
         len(features),
         len(alerts),
         parameters_trained,

@@ -77,13 +77,16 @@ def compute_run_metrics(
     # independent rule, not from this model, so agreement with them is
     # external corroboration rather than the model grading its own output.
     weak_label_agreement_rate = (
-        float(alerts["weak_label"].mean()) if alert_rows and "weak_label" in alerts else None
+        float(alerts["weak_label"].mean()) 
+        if alert_rows and "weak_label" in alerts else None
     )
     detector_agreement_mean = (
-        float(alerts["agreement_count"].mean()) if alert_rows and "agreement_count" in alerts else None
+        float(alerts["agreement_count"].mean()) 
+        if alert_rows and "agreement_count" in alerts else None
     )
     avg_alert_score = (
-        float(alerts["alert_score"].mean()) if alert_rows and "alert_score" in alerts else None
+        float(alerts["alert_score"].mean()) 
+        if alert_rows and "alert_score" in alerts else None
     )
 
     return RunMetrics(
