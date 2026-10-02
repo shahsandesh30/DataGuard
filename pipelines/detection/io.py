@@ -12,7 +12,6 @@ import os
 import awswrangler as wr
 import pandas as pd
 
-<<<<<<< HEAD
 from pipelines.config import Settings, load_settings
 
 # constant prefixes for S3 paths and Glue tables
@@ -43,9 +42,6 @@ def read_silver(
         s3_output=_s3_output(settings),
         ctas_approach=False
     )
-=======
-from pipelines.config import load_settings
->>>>>>> main
 
 
 def read_silver_via_athena(
@@ -54,22 +50,17 @@ def read_silver_via_athena(
     database: str | None = None,
     s3_output: str | None = None,
 ) -> pd.DataFrame:
-<<<<<<< HEAD
     """Read a subset of silver via an Athena SQL query instead of a full S3
     read — useful for EDA or for pulling a filtered slice (e.g. one station,
     one month) without loading everything into memory.
     """
     settings = settings or load_settings()
-=======
-    """Run an ad-hoc Athena query for EDA, outside the scheduled pipeline."""
->>>>>>> main
     return wr.athena.read_sql_query(
         sql=sql,
         database=database or load_settings().glue_database,
         s3_output=s3_output or os.getenv("ATHENA_OUTPUT") or None,
         ctas_approach=False,
     )
-<<<<<<< HEAD
 
 
 def write_derived_features(
@@ -131,5 +122,3 @@ def read_derived_features(
 #         database=settings.glue_database,
 #         table=WEAK_LABELS_TABLE,
 #     )
-=======
->>>>>>> main
