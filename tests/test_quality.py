@@ -1,6 +1,6 @@
 import pandas as pd
 
-from pipelines.conformance.conform import CONFORMED_COLUMNS
+from pipelines.conformance.conform import SILVER_COLUMNS
 from pipelines.quality.metrics import (
     compute_sensor_day_metrics,
     compute_station_day_metrics,
@@ -9,8 +9,8 @@ from pipelines.quality.metrics import (
 from pipelines.quality.rules import apply_quality_rules
 
 
-def _conformed_frame(rows: list[dict]) -> pd.DataFrame:
-    return pd.DataFrame(rows, columns=CONFORMED_COLUMNS)
+def _silver_frame(rows: list[dict]) -> pd.DataFrame:
+    return pd.DataFrame(rows, columns=SILVER_COLUMNS)
 
 
 def _base_row(**overrides) -> dict:
@@ -21,14 +21,12 @@ def _base_row(**overrides) -> dict:
         "datetime": pd.Timestamp("2026-01-01 01:00:00", tz="UTC"),
         "datetime_local": pd.Timestamp("2026-01-01 12:00:00"),
         "date_local": "2026-01-01",
-        "lat": -33.0,
-        "lon": 151.0,
+        "latitude": -33.0,
+        "longitude": 151.0,
         "parameter": "pm25",
         "value": 10.0,
         "unit": "µg/m³",
-        "original_value": 10.0,
         "original_unit": "µg/m³",
-        "source_file": "test.csv.gz",
     }
     row.update(overrides)
     return row
@@ -52,7 +50,7 @@ def test_sensor_day_metrics_flags_negative_and_stuck():
         datetime_local=pd.Timestamp("2026-01-01 20:00:00"),
         value=-0.5,
     )
-    conformed = _conformed_frame(stuck_rows + [neg_row])
+    conformed = _silver_frame(stuck_rows + [neg_row])
     metrics = compute_sensor_day_metrics(conformed)
     row = metrics.iloc[0]
     assert row["readings_received"] == 9
@@ -69,7 +67,7 @@ def test_station_day_rules_fire_for_negative_and_stuck():
         )
         for h in range(8)
     ]
-    conformed = _conformed_frame(stuck_rows)
+    conformed = _silver_frame(stuck_rows)
     sensor = compute_sensor_day_metrics(conformed)
     station = compute_station_day_metrics(conformed, sensor_metrics=sensor)
     incidents = apply_quality_rules(station)
@@ -83,7 +81,7 @@ def test_duplicate_readings_trigger_uniqueness_rule():
         _base_row(),
         _base_row(),
     ]
-    conformed = _conformed_frame(rows)
+    conformed = _silver_frame(rows)
     sensor = compute_sensor_day_metrics(conformed)
     station = compute_station_day_metrics(conformed, sensor_metrics=sensor)
     incidents = apply_quality_rules(station)
@@ -98,7 +96,7 @@ def test_missing_hours_raise_completeness_rule():
         )
         for h in range(4)
     ]
-    conformed = _conformed_frame(rows)
+    conformed = _silver_frame(rows)
     sensor = compute_sensor_day_metrics(conformed)
     station = compute_station_day_metrics(conformed, sensor_metrics=sensor)
     assert station.iloc[0]["missing_rate_mean"] > 0.25

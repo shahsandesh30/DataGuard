@@ -20,7 +20,12 @@ def trailing_daily_means(
     parameter: str,
     before_day: str,
 ) -> pd.Series:
-    """Daily means for trailing window strictly before ``before_day``."""
+    """Daily means strictly before ``before_day`` without future-data leakage.
+
+    Prefer the configured trailing window. If it has no rows, use older history
+    from the same station and parameter; never fall back to the current or a
+    future day.
+    """
     cutoff = _parse_day(before_day)
     window_start = cutoff - timedelta(days=LAYER2_BASELINE_DAYS)
     subset = conformed[
@@ -30,7 +35,13 @@ def trailing_daily_means(
         & (conformed["date_local"] < before_day)
     ]
     if subset.empty:
-        return pd.Series(dtype=float)
+        subset = conformed[
+            (conformed["locationid"] == locationid)
+            & (conformed["parameter"] == parameter)
+            & (conformed["date_local"] < before_day)
+        ]
+        if subset.empty:
+            return pd.Series(dtype=float)
     return subset.groupby("date_local")["value"].mean()
 
 
@@ -43,24 +54,13 @@ def trailing_stats(
     """Median, std, p90, Q3, IQR from trailing daily means."""
     daily = trailing_daily_means(conformed, locationid, parameter, before_day)
     if daily.empty:
-        all_vals = conformed[
-            (conformed["locationid"] == locationid) & (conformed["parameter"] == parameter)
-        ]["value"]
-        if all_vals.empty:
-            return {
-                "median": 0.0,
-                "std": 1.0,
-                "p90": 0.0,
-                "q3": 0.0,
-                "iqr": 1.0,
-            }
-        median = float(all_vals.median())
-        std = float(all_vals.std()) if len(all_vals) > 1 else 1.0
-        p90 = float(np.percentile(all_vals, 90))
-        q3 = float(np.percentile(all_vals, 75))
-        q1 = float(np.percentile(all_vals, 25))
-        iqr = max(q3 - q1, 1e-6)
-        return {"median": median, "std": max(std, 1e-6), "p90": p90, "q3": q3, "iqr": iqr}
+        return {
+            "median": 0.0,
+            "std": 1.0,
+            "p90": 0.0,
+            "q3": 0.0,
+            "iqr": 1.0,
+        }
 
     median = float(daily.median())
     std = float(daily.std()) if len(daily) > 1 else 1.0

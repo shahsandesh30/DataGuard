@@ -118,38 +118,19 @@ def fuse(quality_incidents: pd.DataFrame, event_alerts: pd.DataFrame) -> pd.Data
     alerts["date_local"] = alerts["date_local"].astype(str)
     alerts["alert_score"] = pd.to_numeric(alerts["alert_score"], errors="coerce").fillna(0.0)
 
-    summary = aggregate_incidents(quality_incidents)
-    merged = alerts.merge(summary, on=["locationid", "date_local"], how="left")
-
-    if "has_quality_incident" not in merged.columns:
-        merged["has_quality_incident"] = False
-    else:
-        merged["has_quality_incident"] = merged["has_quality_incident"].where(
-            merged["has_quality_incident"].notna(), False
-        )
-    merged["has_quality_incident"] = merged["has_quality_incident"].astype(bool)
-    if "max_severity" not in merged.columns:
-        merged["max_severity"] = ""
-    else:
-        merged["max_severity"] = merged["max_severity"].where(merged["max_severity"].notna(), "")
-    merged["max_severity"] = merged["max_severity"].astype(str)
-    if "incident_count" not in merged.columns:
-        merged["incident_count"] = 0
-    else:
-        merged["incident_count"] = pd.to_numeric(merged["incident_count"], errors="coerce")
-        merged["incident_count"] = merged["incident_count"].where(merged["incident_count"].notna(), 0)
-    merged["incident_count"] = merged["incident_count"].astype(int)
-    if "incident_rule_ids" not in merged.columns:
-        merged["incident_rule_ids"] = ""
-    else:
-        merged["incident_rule_ids"] = merged["incident_rule_ids"].where(
-            merged["incident_rule_ids"].notna(), ""
-        )
-    merged["incident_rule_ids"] = merged["incident_rule_ids"].astype(str)
-
-    penalties = merged["max_severity"].map(
-        lambda s: SEVERITY_PENALTY.get(str(s).lower(), 0.0) if s else 0.0
+    # aggregate_incidents always returns the summary columns, so a left merge
+    # leaves them present-but-null for alerts on healthy station-days.
+    merged = alerts.merge(
+        aggregate_incidents(quality_incidents), on=["locationid", "date_local"], how="left"
     )
+    merged["has_quality_incident"] = merged["has_quality_incident"].fillna(False).astype(bool)
+    merged["max_severity"] = merged["max_severity"].fillna("").astype(str)
+    merged["incident_rule_ids"] = merged["incident_rule_ids"].fillna("").astype(str)
+    merged["incident_count"] = (
+        pd.to_numeric(merged["incident_count"], errors="coerce").fillna(0).astype(int)
+    )
+
+    penalties = merged["max_severity"].map(lambda s: SEVERITY_PENALTY.get(s.lower(), 0.0))
     merged["trust_score"] = np.clip(merged["alert_score"] * (1.0 - penalties), 0.0, 1.0)
     merged["status"] = np.where(
         merged["has_quality_incident"],

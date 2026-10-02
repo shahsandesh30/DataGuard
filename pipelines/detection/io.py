@@ -1,16 +1,18 @@
-"""
-S3 / Athena / Glue I/O for the detection layer (Layer 2 — pollution event
-detection)
+"""Optional Athena helper for the Layer 2 EDA script.
 
-Read silver data in, write gold data (features + weak labels) out as two separate
-Parquet datasets, both registered in the Glue Catalog.
+The scheduled pipeline does not use Athena for reads or writes; it uses
+``pipelines.storage``. This small helper remains only for
+``notebooks/layer2/athena_eda.py``, where arbitrary SQL is the point.
 """
 
 from __future__ import annotations
 
+import os
+
 import awswrangler as wr
 import pandas as pd
 
+<<<<<<< HEAD
 from pipelines.config import Settings, get_settings
 
 # constant prefixes for S3 paths and Glue tables
@@ -41,23 +43,33 @@ def read_silver(
         s3_output=_s3_output(settings),
         ctas_approach=False
     )
+=======
+from pipelines.config import load_settings
+>>>>>>> main
 
 
 def read_silver_via_athena(
     sql: str,
-    settings: Settings | None = None,
+    *,
+    database: str | None = None,
+    s3_output: str | None = None,
 ) -> pd.DataFrame:
+<<<<<<< HEAD
     """Read a subset of silver via an Athena SQL query instead of a full S3
     read — useful for EDA or for pulling a filtered slice (e.g. one station,
     one month) without loading everything into memory.
     """
     settings = settings or get_settings()
+=======
+    """Run an ad-hoc Athena query for EDA, outside the scheduled pipeline."""
+>>>>>>> main
     return wr.athena.read_sql_query(
         sql=sql,
-        database=settings.glue_database,
-        s3_output=_s3_output(settings),
-        ctas_approach=False
+        database=database or load_settings().glue_database,
+        s3_output=s3_output or os.getenv("ATHENA_OUTPUT") or None,
+        ctas_approach=False,
     )
+<<<<<<< HEAD
 
 
 def write_derived_features(
@@ -119,3 +131,5 @@ def read_derived_features(
 #         database=settings.glue_database,
 #         table=WEAK_LABELS_TABLE,
 #     )
+=======
+>>>>>>> main

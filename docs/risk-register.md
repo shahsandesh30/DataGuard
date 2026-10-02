@@ -2,6 +2,9 @@
 
 L = likelihood, I = impact. Reviewed at every weekly checkpoint.
 
+These R-numbers are **project risks**. They are unrelated to the Layer 1
+quality rule ids (also R1, R2, ...) in `pipelines/quality/rules.py`.
+
 | # | Risk | L | I | Mitigation | Owner |
 |---|---|---|---|---|---|
 | R1 | Reconciling thousands of providers takes longer than planned | M | H | Five working day timebox; narrow to a single region if exceeded | Data engineer |
@@ -20,3 +23,8 @@ negative concentrations, dropouts) without being told they exist?
 **If no:** reduce Layer 2 to deterministic rules only and ship a complete
 single-layer system. A finished one-layer project outperforms two half-built
 layers.
+
+**Status: not yet answered.** Both layers build end to end and both models
+train, but no seeded-failure test exists, so the gate question has not actually
+been put to Layer 1. Writing that test is the top open task — see "Next steps"
+in the top-level README.

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """Layer 2: did something genuinely unusual happen in the air? Event detection."""
 
 from pipelines.detection.build import (
@@ -82,3 +83,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+=======
+"""Layer 2: detect unusual pollution events in conformed measurements."""
+>>>>>>> main

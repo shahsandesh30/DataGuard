@@ -1,14 +1,16 @@
+import json
+
 import pandas as pd
 
-from pipelines.config import MIN_EVENT_ROWS
-from pipelines.conformance.conform import CONFORMED_COLUMNS
+from pipelines.conformance.conform import SILVER_COLUMNS
+from pipelines.detection.baseline import trailing_stats
 from pipelines.detection.build import build_detection, read_event_alerts, read_event_features
 from pipelines.detection.ensemble import EVENT_ALERT_COLUMNS, fit_ensemble, score_events
 from pipelines.detection.features import EVENT_FEATURE_COLUMNS, build_event_features, weak_labels
 
 
-def _conformed_frame(rows: list[dict]) -> pd.DataFrame:
-    return pd.DataFrame(rows, columns=CONFORMED_COLUMNS)
+def _silver_frame(rows: list[dict]) -> pd.DataFrame:
+    return pd.DataFrame(rows, columns=SILVER_COLUMNS)
 
 
 def _base_row(**overrides) -> dict:
@@ -19,14 +21,12 @@ def _base_row(**overrides) -> dict:
         "datetime": pd.Timestamp("2026-01-01 01:00:00", tz="UTC"),
         "datetime_local": pd.Timestamp("2026-01-01 12:00:00"),
         "date_local": "2026-01-01",
-        "lat": -33.0,
-        "lon": 151.0,
+        "latitude": -33.0,
+        "longitude": 151.0,
         "parameter": "pm25",
         "value": 10.0,
         "unit": "µg/m³",
-        "original_value": 10.0,
         "original_unit": "µg/m³",
-        "source_file": "test.csv.gz",
     }
     row.update(overrides)
     return row
@@ -39,7 +39,8 @@ def _baseline_day(locationid: int, date_local: str, hour_offset: int, value: flo
             _base_row(
                 locationid=locationid,
                 date_local=date_local,
-                datetime=pd.Timestamp(f"{date_local} {h:02d}:00:00", tz="UTC") + pd.Timedelta(hours=hour_offset),
+                datetime=pd.Timestamp(f"{date_local} {h:02d}:00:00", tz="UTC")
+                + pd.Timedelta(hours=hour_offset),
                 datetime_local=pd.Timestamp(f"{date_local} {h:02d}:00:00"),
                 parameter="pm25",
                 value=value + (h % 3) * 0.2,
@@ -68,7 +69,7 @@ def _build_spike_fixture() -> pd.DataFrame:
                 value=80.0 if h >= 10 else 12.0,
             )
         )
-    return _conformed_frame(rows)
+    return _silver_frame(rows)
 
 
 def test_spike_day_has_high_z_score_and_roc():
@@ -94,6 +95,10 @@ def test_flat_baseline_days_have_low_alert_scores():
     features = build_event_features(conformed)
     models = fit_ensemble(features)
     alerts = score_events(models, features, weak_label=weak_labels(features, conformed))
+    detector_votes = alerts[["if_flag", "lof_flag", "dbscan_flag"]].sum(axis=1)
+    assert alerts["agreement_count"].eq(detector_votes).all()
+    assert alerts["agreement_count"].between(1, 3).all()
+    assert alerts["alert_score"].between(0.0, 1.0).all()
     baseline_alerts = alerts[
         (alerts["locationid"] == 1601414) & (alerts["date_local"] == "2026-01-03")
     ]
@@ -102,6 +107,22 @@ def test_flat_baseline_days_have_low_alert_scores():
     ]
     if not baseline_alerts.empty and not spike_alerts.empty:
         assert spike_alerts.iloc[0]["alert_score"] >= baseline_alerts.iloc[0]["alert_score"]
+
+
+def test_trailing_baseline_never_uses_future_rows():
+    frame = pd.DataFrame(
+        [
+            {"locationid": 1, "parameter": "pm25", "date_local": "2026-01-01", "value": 10.0},
+            {"locationid": 1, "parameter": "pm25", "date_local": "2026-01-21", "value": 100.0},
+        ]
+    )
+    stats = trailing_stats(frame, 1, "pm25", "2026-01-20")
+    assert stats["median"] == 10.0
+
+
+def test_ensemble_requires_at_least_two_rows():
+    features = pd.DataFrame([{column: 0.0 for column in EVENT_FEATURE_COLUMNS}])
+    assert fit_ensemble(features) is None
 
 
 def test_single_station_spike_has_high_spatial_isolation():
@@ -114,7 +135,7 @@ def test_single_station_spike_has_high_spatial_isolation():
     rows.extend(_baseline_day(1601414, spike_day, 6, 10.0))
     rows.extend(_baseline_day(2455394, spike_day, 6, 10.0))
     rows.extend(_baseline_day(1544061, spike_day, 6, 90.0))
-    features = build_event_features(_conformed_frame(rows))
+    features = build_event_features(_silver_frame(rows))
     isolated = features[
         (features["locationid"] == 1544061)
         & (features["date_local"] == spike_day)
@@ -137,7 +158,7 @@ def test_weak_labels_fire_on_multi_station_elevation():
     event_day = "2026-01-06"
     for loc in (1544061, 1601414, 2455394):
         rows.extend(_baseline_day(loc, event_day, 6, 40.0))
-    conformed = _conformed_frame(rows)
+    conformed = _silver_frame(rows)
     features = build_event_features(conformed)
     labels = weak_labels(features, conformed)
     pm25_event = features[
@@ -165,17 +186,21 @@ def test_build_detection_writes_layer2_partitions(tmp_path, monkeypatch):
                     for h in range(12)
                 ]
             )
-    conformed = _conformed_frame(rows)
-    bronze = tmp_path / "bronze"
-    bronze.mkdir()
+    conformed = _silver_frame(rows)
+    silver = tmp_path / "silver"
     gold = tmp_path / "gold"
 
     monkeypatch.setattr(
-        "pipelines.detection.build.read_conformed",
-        lambda _bronze: conformed,
+        "pipelines.detection.build.read_silver",
+        lambda _silver: conformed,
     )
-    result = build_detection(bronze_root=bronze, gold_root=gold)
+    result = build_detection(silver_root=silver, gold_root=gold)
     assert result.feature_rows > 0
+    summary = json.loads(
+        (gold / "layer2" / "_detection_build.json").read_text(encoding="utf-8")
+    )
+    assert summary["input_measurement_rows"] == len(conformed)
+    assert summary["built_at_utc"].endswith("+00:00")
 
     features = read_event_features(gold)
     assert not features.empty
@@ -186,3 +211,22 @@ def test_build_detection_writes_layer2_partitions(tmp_path, monkeypatch):
     if result.ensemble_trained:
         assert not alerts.empty
         assert set(EVENT_ALERT_COLUMNS).issubset(alerts.columns)
+
+
+def test_layer2_readers_use_shared_storage_for_s3(monkeypatch):
+    expected = pd.DataFrame({"locationid": [1]})
+    calls = []
+
+    def read_parquet(root, dataset):
+        calls.append((root, dataset))
+        return expected
+
+    monkeypatch.setattr("pipelines.detection.build.storage.read_parquet", read_parquet)
+
+    root = "s3://demo/gold"
+    assert read_event_features(root).equals(expected)
+    assert read_event_alerts(root).equals(expected)
+    assert calls == [
+        (root, "layer2/event_features"),
+        (root, "layer2/event_alerts"),
+    ]
