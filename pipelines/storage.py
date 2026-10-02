@@ -279,6 +279,52 @@ def write_parquet(
         )
     return target
 
+def write_model_parquet(
+    frame: pd.DataFrame,
+    root: str | Path,
+    dataset: str = "model_runs",
+    *,
+    glue_table: str | None = None,
+) -> str:
+    """
+    Append one run's model metrics to a stable, partitioned history.
+    """
+    target = join(root, dataset)
+    if frame.empty or "parameter" not in frame.columns:
+        return target
+
+    partitioned = frame.copy()
+    partitioned = partitioned[partitioned["parameter"].notna()]
+    if partitioned.empty:
+        return target
+    partitioned["parameter"] = partitioned["parameter"].astype(str)
+
+    if is_s3(target):
+        settings = load_settings()
+        database = _ensure_database(settings.glue_database)
+        _wr().s3.to_parquet(
+            df=partitioned,
+            path=target.rstrip("/") + "/",
+            dataset=True,
+            mode="append",                 
+            partition_cols=["parameter"],
+            compression="snappy",
+            database=database,
+            table=glue_table or _glue_table_name(target),
+        )
+        return target
+
+    # Local: one uniquely-named file per call, so successive runs never collide.
+    run_id = str(partitioned.get("run_at", pd.Series([datetime.now(UTC).isoformat()])).iloc[0])
+    safe_run_id = re.sub(r"[^A-Za-z0-9_-]", "", run_id)
+    directory = Path(target)
+    for parameter, part in partitioned.groupby("parameter", sort=False):
+        partition_dir = directory / f"parameter={parameter}"
+        partition_dir.mkdir(parents=True, exist_ok=True)
+        part.to_parquet(partition_dir / f"run_{safe_run_id}.parquet", 
+                        index=False, compression="snappy")
+    return target
+
 
 def _years(frame: pd.DataFrame, column: str) -> pd.Series:
     values = frame[column]

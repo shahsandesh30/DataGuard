@@ -363,20 +363,15 @@ def build_hourly_event_features(silver: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=HOURLY_REQUIRED_COLUMNS)
  
-    print("\nAdding time parts...")
     df = _add_time_parts(df)
  
-    print("\nAdding baseline deviation features...")
     df = _add_baseline_deviation(df)
  
-    print("\nAdding rolling features...")
     df = _add_rolling_features(df)
  
-    print("\nAdding spatial features...")
     knn = _build_knn_table(df, NEIGHBOR_K)
     df = _add_spatial_features(df, knn)
  
-    print("\nAdding cross-parameter features...")
     df = _add_cross_parameter_features(df)
  
     return df
