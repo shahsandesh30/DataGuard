@@ -8,15 +8,10 @@ from pathlib import Path
 
 import pandas as pd
 
-<<<<<<< HEAD
-from pipelines.config import MIN_EVENT_ROWS, load_settings
-from pipelines.conformance.conform import read_conformed
-=======
 from pipelines import storage
 from pipelines.build_metadata import build_summary_json
 from pipelines.config import MIN_EVENT_ROWS, load_settings
 from pipelines.conformance.conform import read_silver
->>>>>>> main
 from pipelines.detection.ensemble import EVENT_ALERT_COLUMNS, fit_ensemble, score_events
 from pipelines.detection.features import build_event_features, weak_labels
 
@@ -32,24 +27,6 @@ class DetectionBuildResult:
     alerts_path: str
 
 
-<<<<<<< HEAD
-def read_event_features(gold_root: Path | None = None) -> pd.DataFrame:
-    settings = load_settings()
-    root = Path(gold_root or settings.gold_root) / "layer2" / "event_features"
-    files = sorted(root.rglob("*.parquet"))
-    if not files:
-        return pd.DataFrame()
-    return pd.concat((pd.read_parquet(f) for f in files), ignore_index=True)
-
-
-def read_event_alerts(gold_root: Path | None = None) -> pd.DataFrame:
-    settings = load_settings()
-    root = Path(gold_root or settings.gold_root) / "layer2" / "event_alerts"
-    files = sorted(root.rglob("*.parquet"))
-    if not files:
-        return pd.DataFrame()
-    return pd.concat((pd.read_parquet(f) for f in files), ignore_index=True)
-=======
 def read_event_features(gold_root: str | Path | None = None) -> pd.DataFrame:
     """Read Layer 2 features from either a local or S3 gold zone."""
     settings = load_settings()
@@ -60,7 +37,6 @@ def read_event_alerts(gold_root: str | Path | None = None) -> pd.DataFrame:
     """Read Layer 2 alerts from either a local or S3 gold zone."""
     settings = load_settings()
     return storage.read_parquet(gold_root or settings.gold_root, "layer2/event_alerts")
->>>>>>> main
 
 
 def build_detection(
@@ -68,15 +44,9 @@ def build_detection(
     gold_root: str | Path | None = None,
 ) -> DetectionBuildResult:
     """Compute Layer 2 features and ranked alerts, write to gold."""
-<<<<<<< HEAD
-    settings = load_settings()
-    bronze = Path(bronze_root or settings.bronze_root)
-    gold = Path(gold_root or settings.gold_root) / "layer2"
-=======
     settings = load_settings()
     silver = silver_root or settings.silver_root
     gold = storage.join(gold_root or settings.gold_root, "layer2")
->>>>>>> main
 
     silver = read_silver(silver)
     input_measurement_rows = int(len(silver))
