@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 <<<<<<< HEAD
-from pipelines.config import MIN_EVENT_ROWS, get_settings
+from pipelines.config import MIN_EVENT_ROWS, load_settings
 from pipelines.conformance.conform import read_conformed
 =======
 from pipelines import storage
@@ -34,7 +34,7 @@ class DetectionBuildResult:
 
 <<<<<<< HEAD
 def read_event_features(gold_root: Path | None = None) -> pd.DataFrame:
-    settings = get_settings()
+    settings = load_settings()
     root = Path(gold_root or settings.gold_root) / "layer2" / "event_features"
     files = sorted(root.rglob("*.parquet"))
     if not files:
@@ -43,7 +43,7 @@ def read_event_features(gold_root: Path | None = None) -> pd.DataFrame:
 
 
 def read_event_alerts(gold_root: Path | None = None) -> pd.DataFrame:
-    settings = get_settings()
+    settings = load_settings()
     root = Path(gold_root or settings.gold_root) / "layer2" / "event_alerts"
     files = sorted(root.rglob("*.parquet"))
     if not files:
@@ -69,7 +69,7 @@ def build_detection(
 ) -> DetectionBuildResult:
     """Compute Layer 2 features and ranked alerts, write to gold."""
 <<<<<<< HEAD
-    settings = get_settings()
+    settings = load_settings()
     bronze = Path(bronze_root or settings.bronze_root)
     gold = Path(gold_root or settings.gold_root) / "layer2"
 =======

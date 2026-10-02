@@ -40,7 +40,7 @@ from pipelines.ingestion.fetch import fetch_range
 from pipelines.quality.build import build_quality
 from typing import Callable
 
-from pipelines.config import Settings, get_settings
+from pipelines.config import Settings, load_settings
 
 def _not_implemented(stage_name: str) -> Callable[[Settings], None]:
     def _runner(settings: Settings) -> None:

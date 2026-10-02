@@ -93,24 +93,6 @@ def unsigned_s3_client(region: str = OPENAQ_ARCHIVE_REGION):
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
-# def fetch_locations_for_region(settings: Settings) -> list[dict]:
-#     """Returns every monitoring location OpenAQ has within settings.bbox."""
-#     headers = _headers(settings)
-#     locations: list[dict] = []
-#     page = 1
-#     while True:
-#         payload = _get_with_retry(
-#             f"{OPENAQ_BASE_URL}/locations",
-#             headers=headers,
-#             params={"bbox": settings.bbox, "limit": LOCATIONS_PAGE_LIMIT, "page": page},
-#         )
-#         results = payload.get("results", [])
-#         locations.extend(results)
-#         found = payload.get("meta", {}).get("found")
-#         if not results or (isinstance(found, int) and len(locations) >= found):
-#             break
-#         page += 1
-#     return locations
 
 def download_archive_object(bucket: str, key: str, dest: Path, client=None) -> int:
     """Download one public archive object. Raises FileNotFoundError if missing."""

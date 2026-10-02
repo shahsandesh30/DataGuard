@@ -13,7 +13,7 @@ import awswrangler as wr
 import pandas as pd
 
 <<<<<<< HEAD
-from pipelines.config import Settings, get_settings
+from pipelines.config import Settings, load_settings
 
 # constant prefixes for S3 paths and Glue tables
 SILVER_PREFIX = "silver"      
@@ -35,7 +35,7 @@ def read_silver(
     """Read silver air-quality data from Glue database as a single DataFrame.
     Purpose: Feature engineering and weak-label generation for the detection layer (Layer 2).
     """
-    settings = settings or get_settings()
+    settings = settings or load_settings()
     print(f"Reading silver data from Glue database: {settings.glue_database}")
     return wr.athena.read_sql_query(
         sql="SELECT * FROM silver_data",
@@ -59,7 +59,7 @@ def read_silver_via_athena(
     read — useful for EDA or for pulling a filtered slice (e.g. one station,
     one month) without loading everything into memory.
     """
-    settings = settings or get_settings()
+    settings = settings or load_settings()
 =======
     """Run an ad-hoc Athena query for EDA, outside the scheduled pipeline."""
 >>>>>>> main
@@ -80,7 +80,7 @@ def write_derived_features(
     """Write the engineered feature table to the silver bucket, derived folder
     partitioned by year and parameter
     """
-    settings = settings or get_settings()
+    settings = settings or load_settings()
     path = f"s3://{settings.s3_silver_bucket}/{prefix}/"
     wr.s3.to_parquet(
         df=features,
@@ -98,7 +98,7 @@ def read_derived_features(
     """Read derived features from the Glue database as a single DataFrame.
     Purpose: Fitting detection models.
     """
-    settings = settings or get_settings()
+    settings = settings or load_settings()
     print(f"Reading derived features from Glue database: {settings.glue_database}")
     return wr.athena.read_sql_query(
         sql="SELECT * FROM event_features",
@@ -120,7 +120,7 @@ def read_derived_features(
 #     (locationid, parameter, datetime, year) plus the label column,
 #     so it can be joined back to event_features by anyone downstream.
 #     """
-#     settings = settings or get_settings()
+#     settings = settings or load_settings()
 #     path = f"s3://{settings.gold_bucket}/{prefix}"
 #     wr.s3.to_parquet(
 #         df=labels,

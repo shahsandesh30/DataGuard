@@ -125,24 +125,6 @@ class Settings:
     # Used when a zone is on S3 and storage registers Parquet in Glue.
     glue_database: str = _env("GLUE_DATABASE", "dataguard")
 
-def get_settings() -> Settings:
-    """
-    Builds a Settings object for pipeline run.
-    """
 
-    return Settings(
-        region=os.getenv("DATAGUARD_CITY", "Sydney").lower(),
-        region_code=os.getenv("DATAGUARD_COUNTRY_ISO", "AU").upper(),
-        region_bbox=os.getenv(
-            "DATAGUARD_REGION_BBOX", "150.5209,-34.1183,151.3430,-33.5781"
-        ),
-        s3_bronze_bucket=os.getenv("BRONZE_BUCKET", "dataguard-bronze"),
-        s3_silver_bucket=os.getenv("SILVER_BUCKET", "dataguard-silver"),
-        s3_gold_bucket=os.getenv("GOLD_BUCKET", "dataguard-gold"),
-        aws_region=os.getenv("AWS_REGION", "ap-southeast-2"),
-        athena_output=os.getenv("ATHENA_OUTPUT"),
-        openaq_api_key=os.getenv("OPENAQ_API_KEY"),
-        openaq_archive_bucket=os.getenv("OPENAQ_ARCHIVE_BUCKET", "openaq-data-archive"),
-        openaq_archive_region=os.getenv("OPENAQ_ARCHIVE_REGION", "us-east-1"),
-        glue_database=os.getenv("GLUE_DATABASE", "dataguard_db")
-    )
+def load_settings() -> Settings:
+    return Settings()

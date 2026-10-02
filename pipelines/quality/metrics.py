@@ -27,7 +27,7 @@ from pipelines.config import (
     DELIVERY_COMMITMENT_HOURS,
     TRAILING_CADENCE_DAYS,
     VARIANCE_EPS,
-    get_settings,
+    load_settings,
 )
 from pipelines.conformance.units import CANONICAL_UNITS, canonical_parameter, normalize_unit
 from pipelines.ingestion.fetch import MANIFEST_FILENAME, bronze_key, parse_bronze_filename
