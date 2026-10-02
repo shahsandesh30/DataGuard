@@ -38,50 +38,6 @@ from pipelines.detection.build import build_detection
 from pipelines.fusion.build import build_fusion
 from pipelines.ingestion.fetch import fetch_range
 from pipelines.quality.build import build_quality
-from typing import Callable
-
-from pipelines.config import Settings, load_settings
-
-def _not_implemented(stage_name: str) -> Callable[[Settings], None]:
-    def _runner(settings: Settings) -> None:
-        raise NotImplementedError(f"'{stage_name}' stage is not wired up yet.")
-
-    return _runner
-
-def run_inference_pipeline(settings: Settings) -> None:
-    """Chains ingest -> conform -> quality -> detect -> fuse -> alert.
-
-    Conformance/quality/detection/fusion get wired in here as each is built —
-    for now this proves the ingestion half of the chain, including the
-    early-exit when OpenAQ has nothing new.
-    """
-    result = run_ingestion(settings)
-    if not result.has_new_data:
-        logger.info(
-            "No new data across %d locations in %s, skipping downstream stages.",
-            result.location_count,
-            settings.country_iso,
-        )
-        return
-    logger.info(
-        "Ingested %d records from %d locations -> %s",
-        result.record_count,
-        result.location_count,
-        result.output_path,
-    )
-    # TODO: run_conformance(settings), run_quality(settings), run_detection(settings),
-    #       run_fusion(settings, ...), and the alert check, once each stage exists.
-
-STAGE_FUNCS: dict[str, Callable[[Settings], None]] = {
-    "ingest": run_ingestion,
-    "conform": _not_implemented("conform"),
-    "quality": _not_implemented("quality"),
-    "detect": _not_implemented("detect"),
-    "fuse": _not_implemented("fuse"),
-    "run-inference": run_inference_pipeline,
-    "run-training": _not_implemented("run-training"),
-}
-
 
 STAGES = ["ingest", "conform", "quality", "detect", "fuse"]
 
