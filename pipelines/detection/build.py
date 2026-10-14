@@ -73,6 +73,7 @@ def _build_for_parameter(
         features=group,
         alerts=alerts,
         ensemble_trained=trained,
+        weak_label=group_labels,
         gold_root=gold_root,
     )
     return alerts, trained

@@ -77,6 +77,9 @@ python -m pipelines quality
 python -m pipelines detect
 python -m pipelines fuse
 
+# offline Layer 2 benchmark (holdout + injected spikes); not part of `run`
+python -m pipelines evaluate
+
 streamlit run dashboard/app.py
 ```
 
@@ -109,7 +112,8 @@ pipelines/
   ingestion/        OpenAQ archive -> bronze
   conformance/      bronze -> silver  (conform.py, units.py)
   quality/          Layer 1  (metrics.py -> rules.py -> detector.py -> build.py)
-  detection/        Layer 2  (features.py -> ensemble.py -> build.py)
+  detection/        Layer 2  (features.py -> ensemble.py -> build.py;
+                              evaluation.py per-run metrics, benchmark.py offline)
   fusion/           trust scoring  (trust_score.py, build.py)
   __main__.py       the CLI
 dashboard/app.py    Streamlit: alerts, Layer 1 health, station map
@@ -202,7 +206,7 @@ Latest audited local run over the current bronze snapshot:
 | Foundation | Data queryable via Athena | Working, local and S3 |
 | Conformance | Single queryable table | Working |
 | Layer 1 | Detects known failures unprompted | Rules + model working; not yet tested against seeded failures |
-| Layer 2 | Ranked anomaly output | Working; no evaluation metrics yet |
+| Layer 2 | Ranked anomaly output | Working; evaluated (PM2.5 lift 1.9, held-out 1.5; weak on regional events) — see [model card](models/layer2_model_card.md#evaluation) |
 | Fusion | Public dashboard URL | Trust engine working; dashboard runs locally, not deployed |
 | Consolidation | Final report | Not started |
 
@@ -211,8 +215,9 @@ Latest audited local run over the current bronze snapshot:
 1. **Seed known failures and measure.** Corrupt a copy of silver on purpose —
    freeze a sensor, delete a day, mislabel a unit — and check Layer 1 catches
    each one. Until this exists, "it works" is an assertion, not a result.
-2. **Evaluate Layer 2** against the weak labels it already generates: precision
-   at top-k, and how many alerts fusion correctly holds back.
+2. **Close Layer 2's regional blind spot.** Injected region-wide spikes are
+   caught only 14% of the time. Add a region-day deviation feature, persist the
+   models, and check how many alerts fusion correctly holds back.
 3. **Run the documented AWS backfill and enable the schedule**, then verify one
    success and one controlled failure alert.
 4. **Deploy the dashboard** from `main`. Add Terraform only after the demo is
