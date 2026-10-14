@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import DBSCAN
 from sklearn.ensemble import IsolationForest
-from sklearn.neighbors import LocalOutlierFactor
+from sklearn.neighbors import LocalOutlierFactor, NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 
 from pipelines.detection.features import FEATURE_MODEL_COLUMNS
@@ -48,6 +48,23 @@ def _normalize_scores(raw: np.ndarray) -> np.ndarray:
     return (inverted - lo) / (hi - lo)
 
 
+def tune_dbscan_eps(scaled: np.ndarray, min_samples: int, contamination: float) -> float:
+    """Pick ``eps`` from the data's k-distance curve instead of a fixed value.
+
+    A row is a DBSCAN core point when ``min_samples`` rows (itself included)
+    lie within ``eps``, i.e. when its distance to its ``min_samples``-th
+    neighbour is at most ``eps``. Setting ``eps`` to the ``1 - contamination``
+    quantile of that distance makes ~90% of rows core points, so at most
+    ``contamination`` of them can be noise — the same budget IF and LOF get.
+    A fixed ``eps=1.5`` ignored that distances grow with the ~20 scaled
+    features, and on held-out days it called 72-95% of rows noise.
+    """
+    k = min(min_samples, len(scaled))
+    distances, _ = NearestNeighbors(n_neighbors=k).fit(scaled).kneighbors(scaled)
+    eps = float(np.quantile(distances[:, -1], 1.0 - contamination))
+    return max(eps, 1e-6)  # DBSCAN rejects eps == 0 (all-identical rows)
+
+
 def fit_ensemble(
     features: pd.DataFrame,
     *,
@@ -76,12 +93,20 @@ def fit_ensemble(
     )
     lof_labels = lof.fit_predict(scaled)
 
-    dbscan = DBSCAN(eps=1.5, min_samples=max(2, len(scaled) // 10))
+    min_samples = max(2, len(scaled) // 10)
+    dbscan = DBSCAN(
+        eps=tune_dbscan_eps(scaled, min_samples, contamination),
+        min_samples=min_samples,
+    )
     dbscan_labels = dbscan.fit_predict(scaled)
 
+    # The fitted LOF and DBSCAN estimators are kept so offline evaluation can
+    # score held-out rows with the same hyperparameters (see benchmark.py).
     return {
         "scaler": scaler,
         "isolation_forest": iso,
+        "lof": lof,
+        "dbscan": dbscan,
         "lof_labels": lof_labels,
         "lof_scores": lof.negative_outlier_factor_,
         "dbscan_labels": dbscan_labels,

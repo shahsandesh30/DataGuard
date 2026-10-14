@@ -9,6 +9,9 @@ wrote.
     detect   silver         -> gold/layer2    (Layer 2: did something happen?)
     fuse     gold           -> gold/fusion    (trust score, escalate/quarantine)
 
+``evaluate`` (silver -> gold/layer2/_detection_benchmark.json) benchmarks Layer 2
+offline and is not part of ``run``.
+
     python -m pipelines run --locations 2178 --start 2023-01-01 --end 2023-01-31
     python -m pipelines conform
 
@@ -34,6 +37,7 @@ from datetime import date
 from pipelines import storage
 from pipelines.config import DEFAULT_locationidS, load_settings
 from pipelines.conformance.conform import EmptyBronzeError, build_silver
+from pipelines.detection.benchmark import run_benchmark
 from pipelines.detection.build import build_detection
 from pipelines.fusion.build import build_fusion
 from pipelines.ingestion.fetch import fetch_range
@@ -66,8 +70,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "detect": "Build Layer 2 event features and ranked alerts (gold)",
         "fuse": "Trust-score Layer 2 alerts using Layer 1 incidents (gold)",
         "run": "Run every stage end to end",
+        "evaluate": "Benchmark Layer 2: temporal holdout and injected-spike recall",
     }
-    for name in [*STAGES, "run"]:
+    for name in [*STAGES, "run", "evaluate"]:
         cmd = sub.add_parser(name, help=helps[name])
         if name in ("ingest", "run"):
             cmd.add_argument("--locations", type=int, nargs="+", default=DEFAULT_locationidS)
@@ -163,12 +168,35 @@ def _fuse(args: argparse.Namespace) -> int:
     return 0
 
 
+def _evaluate(args: argparse.Namespace) -> int:
+    _, silver, gold = _roots(args)
+    report = run_benchmark(silver_root=silver, gold_root=gold)
+    for item in report["holdout"]:
+        logging.info(
+            "Holdout %s: flag rate %.2f in-sample vs %.2f held out, weak-label lift %s",
+            item["parameter"],
+            item["train_flag_rate"],
+            item["holdout_flag_rate"],
+            item["holdout_weak_label_lift"],
+        )
+    injection = report["injection"]
+    logging.info(
+        "Injection %s: recall %s over %s spikes, false alarm rate %s",
+        injection["parameter"],
+        injection["recall"],
+        injection["injected_scored"],
+        injection["false_alarm_rate"],
+    )
+    return 0
+
+
 COMMANDS = {
     "ingest": _ingest,
     "conform": _conform,
     "quality": _quality,
     "detect": _detect,
     "fuse": _fuse,
+    "evaluate": _evaluate,
 }
 
 

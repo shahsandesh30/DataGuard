@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 MODEL_RUNS_DATASET = "model_runs"
 
+# Precision@K looks at the top K ranked alerts of each region-day — the rows a
+# reviewer actually reads first.
+PRECISION_AT_K = 3
+
 RUN_METRIC_COLUMNS = [
     "parameter",
     "run_at",
@@ -32,6 +36,9 @@ RUN_METRIC_COLUMNS = [
     "alert_rows",
     "flag_rate",
     "weak_label_agreement_rate",
+    "weak_label_base_rate",
+    "weak_label_lift",
+    "precision_at_k",
     "detector_agreement_mean",
     "avg_alert_score",
 ]
@@ -46,6 +53,9 @@ class RunMetrics:
     alert_rows: int
     flag_rate: float
     weak_label_agreement_rate: float | None
+    weak_label_base_rate: float | None
+    weak_label_lift: float | None
+    precision_at_k: float | None
     detector_agreement_mean: float | None
     avg_alert_score: float | None
 
@@ -59,7 +69,9 @@ def compute_run_metrics(
     alerts: pd.DataFrame,
     *,
     ensemble_trained: bool,
+    weak_label: pd.Series | None = None,
     run_at: str | None = None,
+    k: int = PRECISION_AT_K,
 ) -> RunMetrics:
     """Summarise one parameter's build into a single comparable record.
 
@@ -67,6 +79,9 @@ def compute_run_metrics(
     ``alerts`` is the subset score_events flagged and ranked. Both are
     expected already filtered to one parameter — this function does not
     group internally, so it stays usable whichever way the caller slices.
+
+    ``weak_label`` is the label series for ``features`` (same index). Without
+    it the base rate and lift are unknown and recorded as None.
     """
     run_at = run_at or datetime.now(UTC).isoformat()
     feature_rows = int(len(features))
@@ -80,6 +95,23 @@ def compute_run_metrics(
         float(alerts["weak_label"].mean()) 
         if alert_rows and "weak_label" in alerts else None
     )
+    # The agreement rate alone means little: if every day is weak-labelled, any
+    # model scores 100%. Lift compares it with the share of *all* scored rows
+    # that carry a weak label; above 1.0 the alerts beat random selection.
+    weak_label_base_rate = (
+        float(weak_label.reindex(features.index, fill_value=False).astype(bool).mean())
+        if weak_label is not None and feature_rows else None
+    )
+    weak_label_lift = (
+        weak_label_agreement_rate / weak_label_base_rate
+        if weak_label_agreement_rate is not None and weak_label_base_rate
+        else None
+    )
+    precision_at_k = None
+    if alert_rows and {"rank", "weak_label"}.issubset(alerts.columns):
+        top = alerts[pd.to_numeric(alerts["rank"], errors="coerce") <= k]
+        precision_at_k = float(top["weak_label"].astype(bool).mean()) if len(top) else None
+
     detector_agreement_mean = (
         float(alerts["agreement_count"].mean()) 
         if alert_rows and "agreement_count" in alerts else None
@@ -97,6 +129,9 @@ def compute_run_metrics(
         alert_rows=alert_rows,
         flag_rate=flag_rate,
         weak_label_agreement_rate=weak_label_agreement_rate,
+        weak_label_base_rate=weak_label_base_rate,
+        weak_label_lift=weak_label_lift,
+        precision_at_k=precision_at_k,
         detector_agreement_mean=detector_agreement_mean,
         avg_alert_score=avg_alert_score,
     )
@@ -116,10 +151,17 @@ def evaluate_and_save(
     alerts: pd.DataFrame,
     *,
     ensemble_trained: bool,
+    weak_label: pd.Series | None = None,
     gold_root: str | None = None,
 ) -> RunMetrics:
     """Compute this parameter's run metrics and persist them in one call."""
-    metrics = compute_run_metrics(parameter, features, alerts, ensemble_trained=ensemble_trained)
+    metrics = compute_run_metrics(
+        parameter,
+        features,
+        alerts,
+        ensemble_trained=ensemble_trained,
+        weak_label=weak_label,
+    )
     save_run_metrics(metrics, gold_root)
     return metrics
 
