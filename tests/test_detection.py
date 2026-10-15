@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pandas as pd
 
@@ -194,7 +195,7 @@ def test_build_detection_writes_layer2_partitions(tmp_path, monkeypatch):
         "pipelines.detection.build.read_silver",
         lambda _silver: conformed,
     )
-    result = build_detection(silver_root=silver, gold_root=gold)
+    result = build_detection(silver_root=silver, gold_root=gold, models_root=tmp_path / "models")
     assert result.feature_rows > 0
     summary = json.loads(
         (gold / "layer2" / "_detection_build.json").read_text(encoding="utf-8")
@@ -211,6 +212,14 @@ def test_build_detection_writes_layer2_partitions(tmp_path, monkeypatch):
     if result.ensemble_trained:
         assert not alerts.empty
         assert set(EVENT_ALERT_COLUMNS).issubset(alerts.columns)
+
+    # Every trained parameter's ensemble is saved, and the path reaches the
+    # build summary so a gold build can be traced to the model behind it.
+    assert set(result.model_paths) == set(result.parameters_trained)
+    for parameter, path in result.model_paths.items():
+        assert Path(path).exists()
+        assert (tmp_path / "models" / "layer2" / f"ensemble_{parameter}.joblib").exists()
+    assert summary["model_paths"] == result.model_paths
 
 
 def test_layer2_readers_use_shared_storage_for_s3(monkeypatch):

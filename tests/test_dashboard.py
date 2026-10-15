@@ -5,12 +5,17 @@ import pandas as pd
 from dashboard.data import (
     build_station_status,
     filter_by_date,
+    last_run_models,
     latest_build_time,
+    latest_model_runs,
+    load_benchmark,
     load_build_summaries,
+    load_model_runs,
     load_stations,
 )
 from dashboard.runtime import apply_runtime_secrets, is_public_dashboard
 from pipelines import storage
+from pipelines.detection.evaluation import compute_run_metrics, save_run_metrics
 
 
 def _stations() -> pd.DataFrame:
@@ -119,3 +124,82 @@ def test_runtime_secrets_are_explicit_and_public_mode_is_boolean():
     assert environ["SILVER_ROOT"] == "s3://bucket/silver"
     assert environ["UNRELATED"] == "keep"
     assert is_public_dashboard(environ)
+
+
+def test_last_run_models_lists_trained_and_skipped_models():
+    summaries = {
+        "layer1": {
+            "built_at_utc": "2026-01-08T01:00:00+00:00",
+            "model_trained": True,
+            "model_path": "s3://b/models/layer1/history/run=20260108T010000Z/isolation_forest.joblib",
+        },
+        "layer2": {
+            "built_at_utc": "2026-01-08T01:05:00+00:00",
+            "parameters_trained": ["pm25"],
+            "parameters_skipped": ["pm1"],
+            "model_paths": {
+                "pm25": "models\\layer2\\history\\run=20260108T010500Z\\ensemble_pm25.joblib"
+            },
+        },
+    }
+
+    models = last_run_models(summaries).set_index("model")
+
+    assert list(models.index) == ["isolation_forest", "ensemble_pm25", "ensemble_pm1"]
+    assert models.loc["isolation_forest", "run_id"] == "20260108T010000Z"
+    # Windows separators from a local run must not leak into the run id.
+    assert models.loc["ensemble_pm25", "run_id"] == "20260108T010500Z"
+    assert not models.loc["ensemble_pm1", "trained"]
+    assert models.loc["ensemble_pm1", "run_id"] == ""
+
+
+def test_last_run_models_empty_before_any_build():
+    assert last_run_models({}).empty
+
+
+def _features(n: int) -> pd.DataFrame:
+    return pd.DataFrame({"x": range(n)})
+
+
+def test_model_runs_history_and_latest_per_parameter(tmp_path):
+    layer2 = storage.join(tmp_path / "gold", "layer2")
+    alerts = pd.DataFrame(
+        {"weak_label": [True, False], "rank": [1, 2], "agreement_count": [2, 1],
+         "alert_score": [0.9, 0.4]}
+    )
+    for run_at, parameter in [
+        ("2026-01-01T00:00:00+00:00", "pm25"),
+        ("2026-01-02T00:00:00+00:00", "pm25"),
+        ("2026-01-02T00:00:00+00:00", "pm1"),
+    ]:
+        metrics = compute_run_metrics(
+            parameter, _features(10), alerts, ensemble_trained=True, run_at=run_at
+        )
+        save_run_metrics(metrics, layer2)
+
+    history = load_model_runs(tmp_path / "gold")
+    assert len(history) == 3
+    assert history["run_at"].is_monotonic_increasing
+    # No weak labels were given, so lift is undefined but still numeric.
+    assert pd.api.types.is_float_dtype(history["weak_label_lift"])
+
+    latest = latest_model_runs(history)
+    assert list(latest["parameter"]) == ["pm1", "pm25"]
+    assert latest.set_index("parameter").loc["pm25", "run_at"].day == 2
+
+
+def test_model_runs_empty_without_history(tmp_path):
+    assert load_model_runs(tmp_path / "gold").empty
+    assert latest_model_runs(load_model_runs(tmp_path / "gold")).empty
+
+
+def test_load_benchmark_reads_the_evaluate_report(tmp_path):
+    gold = tmp_path / "gold"
+    assert load_benchmark(gold) is None
+
+    storage.write_text(
+        storage.join(gold, "layer2/_detection_benchmark.json"),
+        json.dumps({"built_at_utc": "2026-01-08T00:00:00+00:00", "holdout": []}),
+    )
+    assert load_benchmark(gold)["built_at_utc"] == "2026-01-08T00:00:00+00:00"
+

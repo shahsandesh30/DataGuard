@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from pipelines import storage
+from pipelines import model_store, storage
 from pipelines.build_metadata import build_summary_json
 from pipelines.config import MIN_EVENT_ROWS, load_settings
 from pipelines.conformance.conform import read_silver
@@ -32,6 +32,7 @@ class DetectionBuildResult:
     parameters_skipped: list[str]
     features_path: str
     alerts_path: str
+    model_paths: dict[str, str]  # parameter -> this run's saved ensemble
 
 
 def read_event_features(gold_root: str | Path | None = None) -> pd.DataFrame:
@@ -51,9 +52,17 @@ def _build_for_parameter(
     group: pd.DataFrame,
     labels: pd.Series,
     gold_root: str,
-) -> tuple[pd.DataFrame, bool]:
-    """Fit, score, and evaluate one parameter's rows. Returns (alerts, trained)."""
+    *,
+    run_id: str,
+    models_root: str | Path | None,
+) -> tuple[pd.DataFrame, str | None]:
+    """Fit, score, and evaluate one parameter's rows.
+
+    Returns the alerts and the saved model path, which is ``None`` when the
+    parameter had too little history to train.
+    """
     trained = len(group) >= MIN_EVENT_ROWS
+    model_path = None
     group_labels = labels.reindex(group.index)
 
     if not trained:
@@ -67,6 +76,14 @@ def _build_for_parameter(
     else:
         models = fit_ensemble(group)
         alerts = score_events(models, group, weak_label=group_labels)
+        if models is not None:
+            model_path = model_store.save_model(
+                models,
+                "layer2",
+                f"ensemble_{parameter}",
+                run_id=run_id,
+                models_root=models_root,
+            )
 
     evaluate_and_save(
         parameter,
@@ -76,12 +93,14 @@ def _build_for_parameter(
         weak_label=group_labels,
         gold_root=gold_root,
     )
-    return alerts, trained
+    return alerts, model_path
 
 
 def build_detection(
     silver_root: str | Path | None = None,
     gold_root: str | Path | None = None,
+    *,
+    models_root: str | Path | None = None,
 ) -> DetectionBuildResult:
     """
     Compute Layer 2 features and ranked alerts, write to gold
@@ -105,11 +124,16 @@ def build_detection(
     all_alerts: list[pd.DataFrame] = []
     parameters_trained: list[str] = []
     parameters_skipped: list[str] = []
+    model_paths: dict[str, str] = {}
+    run_id = model_store.new_run_id()
 
     for parameter, group in features.groupby("parameter", sort=False):
-        alerts, trained = _build_for_parameter(parameter, group, labels, gold)
-        if trained:
+        alerts, model_path = _build_for_parameter(
+            parameter, group, labels, gold, run_id=run_id, models_root=models_root
+        )
+        if model_path is not None:
             parameters_trained.append(parameter)
+            model_paths[parameter] = model_path
         else:
             parameters_skipped.append(parameter)
         if not alerts.empty:
@@ -132,6 +156,7 @@ def build_detection(
         parameters_skipped=parameters_skipped,
         features_path=str(features_path),
         alerts_path=str(alerts_path),
+        model_paths=model_paths,
     )
 
     storage.write_text(

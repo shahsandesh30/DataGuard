@@ -28,7 +28,10 @@ def render_configs(
     glue_role_arn = f"arn:aws:iam::{account_id}:role/{GLUE_ROLE_NAME}"
     job_arn = f"arn:aws:glue:{region}:{account_id}:job/{GLUE_JOB_NAME}"
     bucket_arn = f"arn:aws:s3:::{bucket}"
-    data_arns = [f"{bucket_arn}/{prefix}/*" for prefix in ("bronze", "silver", "gold", "artifacts")]
+    data_arns = [
+        f"{bucket_arn}/{prefix}/*"
+        for prefix in ("bronze", "silver", "gold", "models", "artifacts")
+    ]
 
     trust = lambda service: {  # noqa: E731 - keeps the two trust documents visibly identical
         "Version": "2012-10-17",
@@ -52,7 +55,13 @@ def render_configs(
                     [bucket_arn],
                     Condition={
                         "StringLike": {
-                            "s3:prefix": ["bronze/*", "silver/*", "gold/*", "artifacts/*"]
+                            "s3:prefix": [
+                                "bronze/*",
+                                "silver/*",
+                                "gold/*",
+                                "models/*",
+                                "artifacts/*",
+                            ]
                         }
                     },
                 ),
@@ -158,6 +167,7 @@ def render_configs(
                 "--bronze-root": f"s3://{bucket}/bronze",
                 "--silver-root": f"s3://{bucket}/silver",
                 "--gold-root": f"s3://{bucket}/gold",
+                "--models-root": f"s3://{bucket}/models",
                 "--glue-database": "dataguard",
                 "--locations": "1544061,1601414,2455394,6430870",
                 "--lag-days": "3",

@@ -154,8 +154,12 @@ entirely different things.
   submodule (`from pipelines.quality.metrics import ...`).
 - **Ruff covers the complete pipeline, including `pipelines/detection/`.** Do not restore the
   old detection exclusion in CI.
-- **Trained models are written to `models/` and gitignored** (`*.joblib`). `models/` also holds
-  the version-controlled model cards, so do not clean the directory wholesale.
+- **Trained models go to `MODELS_ROOT`** (default `models/`, or an `s3://` prefix; CLI
+  `--models-root`) through `pipelines/model_store.py`, as `<layer>/<name>.joblib` (latest) plus
+  `<layer>/history/run=<UTC timestamp>/<name>.joblib`. Each stage's `_build.json` records the
+  history path, which is the only link from a gold build to its model. Local `*.joblib` files are
+  gitignored; `models/` also holds the version-controlled model cards, so do not clean the
+  directory wholesale.
 - **The bronze manifest is not safe for concurrent writers** — S3 has no append, so each
   arrival rewrites the object.
 

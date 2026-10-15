@@ -23,8 +23,8 @@ venv/
 .ipynb_checkpoints/
 
 # Models
-models/*.pkl
-models/*.joblib
+models/**/*.pkl
+models/**/*.joblib
 
 # Terraform — state can contain resource metadata, tfvars can contain account detail
 # (.terraform.lock.hcl is intentionally NOT ignored — commit it so everyone

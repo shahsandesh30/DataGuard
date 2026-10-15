@@ -29,6 +29,11 @@ Views:
 - **Data health** — Layer 1 station-day quality metrics and incidents.
 - **Station map** — color-coded OpenAQ stations (escalated / quarantined /
   quality_only / monitored) from silver coordinates joined to gold status.
+- **Models** — which models the last run trained or skipped (and their run id),
+  Layer 2 evaluation metrics for the latest run and their trend across runs
+  (`gold/layer2/model_runs`), and the offline benchmark written by
+  `python -m pipelines evaluate`. Everything comes from gold, so the read-only
+  dashboard role needs no access to `models/`; model files are never loaded.
 
 `dashboard/data.py` holds the loading and join logic and is unit tested;
 `app.py` is layout only.

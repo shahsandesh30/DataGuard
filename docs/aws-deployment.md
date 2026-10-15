@@ -63,8 +63,15 @@ aws glue start-job-run --job-name dataguard-daily --region $Region `
   --arguments '{"--start":"2026-01-01","--end":"2026-01-31"}'
 ```
 
-Verify `bronze/`, `silver/`, `gold/`, the Glue Catalog tables, and the four
-timestamped build summaries before continuing.
+Verify `bronze/`, `silver/`, `gold/`, `models/`, the Glue Catalog tables, and
+the four timestamped build summaries before continuing. `models/` holds the
+latest Layer 1 and Layer 2 models plus one copy per run under `history/`.
+
+A deployment that predates `models/` must re-apply the rendered role policy
+(`put-role-policy` above), re-upload the Glue artifacts, and add
+`"--models-root": "s3://<bucket>/models"` to the job's default arguments.
+Without the policy change the job fails with `AccessDenied` on its first
+model write.
 
 ## 4. Schedule 06:00 Australia/Sydney
 

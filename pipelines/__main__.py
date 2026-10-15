@@ -21,6 +21,9 @@ BRONZE_ROOT / SILVER_ROOT / GOLD_ROOT in .env::
     python -m pipelines conform --bronze-root s3://dataguard-openaq-bronze \
                                 --silver-root s3://dataguard-openaq-silver
 
+Trained models go to MODELS_ROOT (default ``models/``), which may also be an
+``s3://`` prefix; override it per run with ``--models-root``.
+
 Parquet written to S3 is registered in the Glue Catalog, so Athena sees the same
 tables. Every downstream stage reads the materialised output of the preceding
 stage through the shared local/S3 storage layer.
@@ -54,6 +57,11 @@ def _roots(args: argparse.Namespace) -> tuple[str, str, str]:
         storage.normalize(args.silver_root or settings.silver_root),
         storage.normalize(args.gold_root or settings.gold_root),
     )
+
+
+def _models_root(args: argparse.Namespace) -> str:
+    """Where trained models go: CLI flag, else MODELS_ROOT, else ``models``."""
+    return storage.normalize(args.models_root or load_settings().models_root)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -94,6 +102,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             default=None,
             help="local directory or s3:// prefix (default: data/gold)",
         )
+        if name in ("quality", "detect", "run"):
+            cmd.add_argument(
+                "--models-root",
+                default=None,
+                help="local directory or s3:// prefix for trained models (default: models)",
+            )
 
     return parser.parse_args(argv)
 
@@ -129,7 +143,12 @@ def _conform(args: argparse.Namespace) -> int:
 
 def _quality(args: argparse.Namespace) -> int:
     bronze, silver, gold = _roots(args)
-    result = build_quality(silver_root=silver, bronze_root=bronze, gold_root=gold)
+    result = build_quality(
+        silver_root=silver,
+        bronze_root=bronze,
+        gold_root=gold,
+        models_root=_models_root(args),
+    )
     logging.info(
         "Layer 1: %s station-days, %s rule incidents, %s model incidents (trained=%s) -> %s",
         result.station_day_rows,
@@ -138,12 +157,16 @@ def _quality(args: argparse.Namespace) -> int:
         result.model_trained,
         result.output_path,
     )
+    if result.model_path:
+        logging.info("Layer 1 model saved -> %s", result.model_path)
     return 0
 
 
 def _detect(args: argparse.Namespace) -> int:
     _, silver, gold = _roots(args)
-    result = build_detection(silver_root=silver, gold_root=gold)
+    result = build_detection(
+        silver_root=silver, gold_root=gold, models_root=_models_root(args)
+    )
     logging.info(
         "Layer 2: %s feature rows, %s alerts (trained=%s) -> %s, %s",
         result.feature_rows,
@@ -152,6 +175,8 @@ def _detect(args: argparse.Namespace) -> int:
         result.features_path,
         result.alerts_path,
     )
+    for parameter, path in result.model_paths.items():
+        logging.info("Layer 2 %s model saved -> %s", parameter, path)
     return 0
 
 

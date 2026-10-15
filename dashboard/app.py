@@ -28,9 +28,13 @@ from dashboard.data import (  # noqa: E402 — needs ROOT on sys.path first
     available_dates,
     build_station_status,
     filter_by_date,
+    last_run_models,
     latest_build_time,
+    latest_model_runs,
+    load_benchmark,
     load_build_summaries,
     load_dashboard_frames,
+    load_model_runs,
     load_stations,
 )
 from dashboard.runtime import apply_runtime_secrets, is_public_dashboard  # noqa: E402
@@ -50,6 +54,8 @@ def _load_dashboard_data(silver_root: str, gold_root: str):
         load_dashboard_frames(gold_root),
         load_stations(silver_root),
         load_build_summaries(silver_root, gold_root),
+        load_model_runs(gold_root),
+        load_benchmark(gold_root),
     )
 
 ALERT_COLUMNS = [
@@ -92,6 +98,30 @@ MAP_COLUMNS = [
     "incident_rule_ids",
 ]
 
+EVALUATION_COLUMNS = [
+    "parameter",
+    "run_at",
+    "ensemble_trained",
+    "feature_rows",
+    "alert_rows",
+    "flag_rate",
+    "weak_label_lift",
+    "precision_at_k",
+    "weak_label_agreement_rate",
+    "weak_label_base_rate",
+    "detector_agreement_mean",
+    "avg_alert_score",
+]
+
+# Metrics worth plotting across runs, with the label shown in the picker.
+TREND_METRICS = {
+    "weak_label_lift": "Weak-label lift",
+    "precision_at_k": "Precision@3",
+    "flag_rate": "Flag rate",
+    "detector_agreement_mean": "Mean detector agreement",
+    "avg_alert_score": "Mean alert score",
+}
+
 LEGEND = """
 **Legend**
 - <span style="color:#e63946">●</span> **escalated** — trusted pollution alert
@@ -127,7 +157,9 @@ with st.sidebar:
         st.rerun()
 
     try:
-        frames, stations, build_summaries = _load_dashboard_data(silver_root, gold_root)
+        frames, stations, build_summaries, model_runs, benchmark = _load_dashboard_data(
+            silver_root, gold_root
+        )
     except Exception as exc:  # noqa: BLE001 — the public UI must fail closed and clearly
         logger.exception("Dashboard data load failed")
         st.error("DataGuard could not read its configured data lake.")
@@ -175,11 +207,12 @@ metrics_view = filter_by_date(metrics, table_date)
 incidents_view = filter_by_date(incidents, table_date)
 
 
-tab_alerts, tab_quality, tab_map = st.tabs(
+tab_alerts, tab_quality, tab_map, tab_models = st.tabs(
     [
         "Trust-scored alerts",
         "Data health (Layer 1)",
         "Station map",
+        "Models",
     ]
 )
 
@@ -505,3 +538,106 @@ with tab_map:
 
         st.subheader("Stations")
         _show(map_df, MAP_COLUMNS)
+
+with tab_models:
+    st.subheader("Last run")
+    models = last_run_models(build_summaries)
+    if models.empty:
+        st.info("No Layer 1 or Layer 2 build summary yet. Run: `python -m pipelines run`.")
+    else:
+        trained = models[models["trained"]]
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Models trained", f"{len(trained)} of {len(models)}")
+        c2.metric("Layer 1 model incidents", build_summaries.get("layer1", {}).get(
+            "model_incidents", 0
+        ))
+        c3.metric("Layer 2 alerts", build_summaries.get("layer2", {}).get("alert_rows", 0))
+        # Paths name the bucket, which public mode keeps out of view.
+        model_columns = [
+            c for c in models.columns if not (is_public_dashboard() and c == "model_path")
+        ]
+        _show(models, model_columns)
+        st.caption(
+            "A skipped model had too little history: Layer 1 needs 14 station-days for a "
+            "location, Layer 2 needs 20 feature rows per parameter. Skipped layers run "
+            "rules-only."
+        )
+
+    st.subheader("Layer 2 evaluation — latest run")
+    latest = latest_model_runs(model_runs)
+    if latest.empty:
+        st.info("No Layer 2 run metrics yet. They are recorded by `python -m pipelines detect`.")
+    else:
+        _show(latest, EVALUATION_COLUMNS)
+        st.caption(
+            "There is no labelled ground truth, so these are proxies. **Lift** compares how "
+            "often alerts match the independent weak-label rule with how often any row does: "
+            "above 1.0 the alerts beat random selection. **Precision@3** is the weak-label "
+            "share of each region-day's top three alerts."
+        )
+
+        st.subheader("Evaluation trend across runs")
+        metric = st.selectbox(
+            "Metric",
+            options=[m for m in TREND_METRICS if m in model_runs.columns],
+            format_func=TREND_METRICS.get,
+            key="model_trend_metric",
+        )
+        trend = model_runs.pivot_table(
+            index="run_at", columns="parameter", values=metric, aggfunc="last"
+        )
+        if trend.dropna(how="all").empty:
+            st.caption(f"No {TREND_METRICS[metric].lower()} values recorded yet.")
+        else:
+            st.line_chart(trend, use_container_width=True)
+        with st.expander(f"All recorded runs ({len(model_runs)})"):
+            _show(model_runs, EVALUATION_COLUMNS, sort_by="run_at")
+
+    st.subheader("Layer 2 offline benchmark")
+    if benchmark is None:
+        st.info(
+            "No benchmark report yet. Run `python -m pipelines evaluate` to measure "
+            "held-out behaviour and recall on injected spikes."
+        )
+    else:
+        st.caption(
+            f"Built {benchmark.get('built_at_utc', 'unknown')} over "
+            f"{benchmark.get('feature_rows', 0)} feature rows."
+        )
+        holdout = pd.DataFrame(benchmark.get("holdout", []))
+        if not holdout.empty:
+            st.markdown("**Temporal holdout** — trained on earlier days, scored on later ones")
+            _show(
+                holdout,
+                [
+                    "parameter",
+                    "train_dates",
+                    "holdout_dates",
+                    "train_flag_rate",
+                    "holdout_flag_rate",
+                    "holdout_weak_label_lift",
+                    "holdout_if_rate",
+                    "holdout_lof_rate",
+                    "holdout_dbscan_rate",
+                ],
+            )
+        injection = benchmark.get("injection") or {}
+        if injection:
+            st.markdown(
+                f"**Injected-spike recall** — {injection.get('injected_scored', 0)} synthetic "
+                f"{injection.get('parameter', '')} spikes"
+            )
+
+            def _pct(value) -> str:
+                return "—" if value is None else f"{value:.0%}"
+
+            i1, i2, i3, i4 = st.columns(4)
+            i1.metric("Recall", _pct(injection.get("recall")))
+            i2.metric("Local spikes", _pct(injection.get("recall_local")))
+            i3.metric("Regional spikes", _pct(injection.get("recall_regional")))
+            i4.metric("False alarm rate", _pct(injection.get("false_alarm_rate")))
+
+    st.caption(
+        "Layer 1 has no labelled evaluation; its model card documents validation against "
+        "known degradation events."
+    )

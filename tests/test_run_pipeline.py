@@ -56,6 +56,7 @@ def test_build_pipeline_argv_passes_locations_and_roots():
         locations=[2178, 1544061],
         bronze_root="s3://bronze",
         gold_root="s3://gold",
+        models_root="s3://models",
     )
     assert argv[argv.index("--locations") + 1 : argv.index("--locations") + 3] == [
         "2178",
@@ -63,6 +64,7 @@ def test_build_pipeline_argv_passes_locations_and_roots():
     ]
     assert "--bronze-root" in argv and "s3://bronze" in argv
     assert "--gold-root" in argv and "s3://gold" in argv
+    assert "--models-root" in argv and "s3://models" in argv
     # Unset roots stay out of argv so the CLI resolves them from .env.
     assert "--silver-root" not in argv
 

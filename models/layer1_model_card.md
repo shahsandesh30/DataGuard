@@ -39,7 +39,8 @@ python -m pipelines run --locations 1544061 1601414 2455394 6430870 --start 2026
 - **Algorithm:** `sklearn.ensemble.IsolationForest`
 - **Preprocessing:** `StandardScaler` on feature matrix
 - **Hyperparameters:** `contamination=0.05`, `n_estimators=100`, `random_state=42`
-- **Artifact:** `models/layer1_isolation_forest.joblib` (gitignored)
+- **Artifact:** `<MODELS_ROOT>/layer1/isolation_forest.joblib`, plus a copy per run under
+  `layer1/history/run=<UTC timestamp>/` (default root `models/`, gitignored)
 
 ## Validation (documented degradation events)
 
