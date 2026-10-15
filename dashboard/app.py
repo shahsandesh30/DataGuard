@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from dashboard.alert_view import render_alert_explorer
 from dashboard.data import (  # noqa: E402 — needs ROOT on sys.path first
     STATUS_COLORS,
     available_dates,
@@ -39,6 +40,7 @@ from dashboard.data import (  # noqa: E402 — needs ROOT on sys.path first
 )
 from dashboard.runtime import apply_runtime_secrets, is_public_dashboard  # noqa: E402
 from pipelines.config import load_settings  # noqa: E402
+from pipelines.conformance.conform import read_silver
 
 st.set_page_config(page_title="DataGuard", page_icon="🛡️", layout="wide")
 
@@ -50,12 +52,14 @@ with suppress(Exception):  # No secrets file is normal for a local dashboard.
 
 @st.cache_data(ttl=300, show_spinner="Loading DataGuard lake data…")
 def _load_dashboard_data(silver_root: str, gold_root: str):
+    measurements = read_silver(silver_root)
     return (
         load_dashboard_frames(gold_root),
-        load_stations(silver_root),
+        load_stations(silver_root, measurements=measurements),
         load_build_summaries(silver_root, gold_root),
         load_model_runs(gold_root),
         load_benchmark(gold_root),
+        measurements,
     )
 
 ALERT_COLUMNS = [
@@ -116,7 +120,7 @@ EVALUATION_COLUMNS = [
 # Metrics worth plotting across runs, with the label shown in the picker.
 TREND_METRICS = {
     "weak_label_lift": "Weak-label lift",
-    "precision_at_k": "Precision@3",
+    "precision_at_k": "Weak-label Precision@3",
     "flag_rate": "Flag rate",
     "detector_agreement_mean": "Mean detector agreement",
     "avg_alert_score": "Mean alert score",
@@ -124,10 +128,10 @@ TREND_METRICS = {
 
 LEGEND = """
 **Legend**
-- <span style="color:#e63946">●</span> **escalated** — trusted pollution alert
+- <span style="color:#e63946">●</span> **escalated** — alert with no coincident quality incident
 - <span style="color:#f4a261">●</span> **quarantined** — alert + data-health incident (always shown)
 - <span style="color:#7b61ff">●</span> **quality_only** — Layer 1 incident, no fusion alert
-- <span style="color:#2a9d8f">●</span> **monitored** — healthy / no active signal
+- <span style="color:#2a9d8f">●</span> **monitored** — no active signal recorded
 """
 
 
@@ -135,7 +139,7 @@ def _show(frame: pd.DataFrame, columns: list[str], sort_by: str | None = None) -
     view = frame[[c for c in columns if c in frame.columns]]
     if sort_by and sort_by in view.columns:
         view = view.sort_values(sort_by, ascending=False)
-    st.dataframe(view, use_container_width=True)
+    st.dataframe(view, width="stretch")
 
 
 st.title("DataGuard")
@@ -152,14 +156,13 @@ with st.sidebar:
         silver_root = st.text_input("Silver root", value=settings.silver_root)
         gold_root = st.text_input("Gold root", value=settings.gold_root)
 
-    if st.button("Refresh data", use_container_width=True):
+    if st.button("Refresh data", width="stretch"):
         _load_dashboard_data.clear()
         st.rerun()
 
     try:
-        frames, stations, build_summaries, model_runs, benchmark = _load_dashboard_data(
-            silver_root, gold_root
-        )
+        loaded = _load_dashboard_data(silver_root, gold_root)
+        frames, stations, build_summaries, model_runs, benchmark, measurements = loaded
     except Exception as exc:  # noqa: BLE001 — the public UI must fail closed and clearly
         logger.exception("Dashboard data load failed")
         st.error("DataGuard could not read its configured data lake.")
@@ -186,7 +189,7 @@ with st.sidebar:
     if dates:
         as_of_date = st.selectbox("Station-day", options=dates, index=len(dates) - 1)
         st.caption(f"Latest available station-day: {dates[-1]}")
-        show_all_dates = st.checkbox("Show all dates in tables", value=False)
+        show_all_dates = st.checkbox("Show all dates in tables", value=False, key="show_all_dates")
     else:
         as_of_date, show_all_dates = None, True
         st.caption("No gold dates yet — run quality / detect / fuse.")
@@ -218,11 +221,10 @@ tab_alerts, tab_quality, tab_map, tab_models = st.tabs(
 
 with tab_alerts:
     if fused_view.empty:
-        st.info(
-            "No fused alerts yet. Run: `python -m pipelines quality` → "
-            "`python -m pipelines detect` → `python -m pipelines fuse` "
-            "(the Layer 2 ensemble needs ≥20 feature rows before alerts exist)."
-        )
+        if fused.empty:
+            st.info("No saved fusion alerts are available in this dataset.")
+        else:
+            st.info("No alerts match this local date. Choose another date or show all dates.")
 
     else:
         escalated = fused_view[
@@ -254,6 +256,8 @@ with tab_alerts:
             "Mean trust score",
             f"{fused_view['trust_score'].mean():.2f}",
         )
+
+        render_alert_explorer(fused_view, incidents, measurements, build_summaries)
 
         # ---------------------------------------------------------
         # Trust Score Trend
@@ -313,7 +317,7 @@ with tab_alerts:
                     trust_trend,
                     x="date_local",
                     y="trust_score",
-                    use_container_width=True,
+                    width="stretch",
                 )
         # ---------------------------------------------------------
         # Alert Decision Summary
@@ -338,101 +342,16 @@ with tab_alerts:
                     status_counts,
                     x="Decision",
                     y="Alerts",
-                    use_container_width=True,
+                    width="stretch",
                 )
 
-        # ---------------------------------------------------------
-        # Station Drill-down
-        # ---------------------------------------------------------
-        # Allows users to inspect the alert history of an individual
-        # monitoring station instead of only viewing aggregate results.
-
-        st.subheader("Station drill-down")
-
-        if "locationid" in fused.columns:
-
-            # Get all stations that have fusion alerts.
-            station_options = sorted(
-                fused["locationid"].dropna().unique().tolist()
-            )
-
-            if station_options:
-
-                # Let the dashboard user choose a station to investigate.
-                selected_station = st.selectbox(
-                    "Select station",
-                    options=station_options,
-                    key="alert_station_selector",
-                )
-
-                # Keep only alerts belonging to the selected station.
-                station_history = fused[
-                    fused["locationid"] == selected_station
-                ].copy()
-
-                # Sort station history chronologically.
-                station_history["date_local"] = pd.to_datetime(
-                    station_history["date_local"],
-                    errors="coerce",
-                )
-
-                station_history = station_history.sort_values(
-                    "date_local"
-                )
-
-                # Display a quick summary of the selected station.
-                s1, s2, s3 = st.columns(3)
-
-                s1.metric(
-                    "Alerts",
-                    len(station_history),
-                )
-
-                s2.metric(
-                    "Average trust score",
-                    f"{station_history['trust_score'].mean():.2f}",
-                )
-
-                s3.metric(
-                    "Quarantined",
-                    int(
-                        (
-                            station_history["status"]
-                            == "quarantined"
-                        ).sum()
-                    ),
-                )
-
-                # Plot the station's trust-score history.
-                st.caption(
-                    "Trust-score history for the selected station"
-                )
-
-                st.line_chart(
-                    station_history,
-                    x="date_local",
-                    y="trust_score",
-                    use_container_width=True,
-                )
-
-                # Provide the underlying alert records for investigation.
-                station_cols = [
-                    "date_local",
-                    "parameter",
-                    "status",
-                    "trust_score",
-                    "alert_score",
-                    "has_quality_incident",
-                    "max_severity",
-                    "incident_rule_ids",
-                ]
-
-                _show(station_history, station_cols)
-
-            else:
-                st.caption(
-                    "No stations with fusion alerts are available."
-                )
+        with st.expander("History for the selected alert station"):
+            selected_station = st.session_state.get("explain_station")
+            history = fused[fused["locationid"] == selected_station].copy()
+            if not history.empty:
+                history["date_local"] = pd.to_datetime(history["date_local"], errors="coerce")
+                st.line_chart(history, x="date_local", y="trust_score", width="stretch")
+                _show(history, ALERT_COLUMNS)
 
         st.subheader("Escalated")
 
@@ -470,7 +389,7 @@ with tab_quality:
 
         st.dataframe(
             metrics_view,
-            use_container_width=True,
+            width="stretch",
         )
 
         if not incidents_view.empty:
@@ -527,7 +446,7 @@ with tab_map:
                     "style": {"backgroundColor": "#111", "color": "white"},
                 },
             ),
-            use_container_width=True,
+            width="stretch",
         )
 
         if fused.empty:
@@ -573,7 +492,8 @@ with tab_models:
             "There is no labelled ground truth, so these are proxies. **Lift** compares how "
             "often alerts match the independent weak-label rule with how often any row does: "
             "above 1.0 the alerts beat random selection. **Precision@3** is the weak-label "
-            "share of each region-day's top three alerts."
+            "share of each region-day's top three alerts. Weak-label metrics apply only "
+            "to PM2.5; they are unavailable for other pollutants."
         )
 
         st.subheader("Evaluation trend across runs")
@@ -589,7 +509,7 @@ with tab_models:
         if trend.dropna(how="all").empty:
             st.caption(f"No {TREND_METRICS[metric].lower()} values recorded yet.")
         else:
-            st.line_chart(trend, use_container_width=True)
+            st.line_chart(trend, width="stretch")
         with st.expander(f"All recorded runs ({len(model_runs)})"):
             _show(model_runs, EVALUATION_COLUMNS, sort_by="run_at")
 
@@ -600,6 +520,11 @@ with tab_models:
             "held-out behaviour and recall on injected spikes."
         )
     else:
+        if benchmark.get("methodology_version", 1) < 2:
+            st.warning(
+                "This benchmark predates the corrected temporal split and spike eligibility "
+                "checks. Rerun the offline evaluation before quoting its results."
+            )
         st.caption(
             f"Built {benchmark.get('built_at_utc', 'unknown')} over "
             f"{benchmark.get('feature_rows', 0)} feature rows."
@@ -635,9 +560,13 @@ with tab_models:
             i1.metric("Recall", _pct(injection.get("recall")))
             i2.metric("Local spikes", _pct(injection.get("recall_local")))
             i3.metric("Regional spikes", _pct(injection.get("recall_regional")))
-            i4.metric("False alarm rate", _pct(injection.get("false_alarm_rate")))
+            i4.metric("Untouched-data alert rate", _pct(injection.get("untouched_alert_rate")))
+            st.caption(
+                "Untouched real readings have no verified normal labels. This alert rate "
+                "does not measure false positives. Spike recall includes the daily top-K cap."
+            )
 
     st.caption(
-        "Layer 1 has no labelled evaluation; its model card documents validation against "
-        "known degradation events."
+        "Layer 1 has controlled synthetic-fault coverage. Independent review of real "
+        "alerts remains pending; see the assessment progress and model cards."
     )

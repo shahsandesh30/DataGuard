@@ -205,23 +205,47 @@ Latest audited local run over the current bronze snapshot:
 |---|---|---|
 | Foundation | Data queryable via Athena | Working, local and S3 |
 | Conformance | Single queryable table | Working |
-| Layer 1 | Detects known failures unprompted | Rules + model working; not yet tested against seeded failures |
-| Layer 2 | Ranked anomaly output | Working; evaluated (PM2.5 lift 1.9, held-out 1.5; weak on regional events) — see [model card](models/layer2_model_card.md#evaluation) |
-| Fusion | Public dashboard URL | Trust engine working; dashboard runs locally, not deployed |
+| Layer 1 | Detects known failures unprompted | All 18 controlled fault cases detected; three additional schema-reversion incidents — see [model card](models/layer1_model_card.md#controlled-fault-benchmark-15-october-2026) |
+| Layer 2 | Ranked anomaly output | Working; proxy metrics and corrected temporal/injected-spike benchmarks — see [model card](models/layer2_model_card.md#evaluation) |
+| Fusion | Public dashboard URL | Offline fusion evaluation ready; human review pending; dashboard runs locally, not deployed |
 | Consolidation | Final report | Not started |
 
 ## Next steps
 
-1. **Seed known failures and measure.** Corrupt a copy of silver on purpose —
-   freeze a sensor, delete a day, mislabel a unit — and check Layer 1 catches
-   each one. Until this exists, "it works" is an assertion, not a result.
-2. **Close Layer 2's regional blind spot.** Injected region-wide spikes are
-   caught only 14% of the time. Add a region-day deviation feature, persist the
-   models, and check how many alerts fusion correctly holds back.
-3. **Run the documented AWS backfill and enable the schedule**, then verify one
+1. **Complete the two-person alert review.** The [Step 4 evidence page](docs/evaluation/step4-review/review.html)
+   contains 20 PM2.5 cases for independent judgments. Follow the
+   [review guide](docs/fusion-review.md); the automated fusion run preserves all
+   175 candidates, escalating 110 and holding 65. This quarantine count does
+   not establish false-alert reduction or real-event accuracy.
+2. **Run the documented AWS backfill and enable the schedule**, then verify one
    success and one controlled failure alert.
-4. **Deploy the dashboard** from `main`. Add Terraform only after the demo is
+3. **Deploy the dashboard** from `main`. Add Terraform only after the demo is
    stable; the current manual AWS setup is intentionally small.
+
+The offline Layer 1 benchmark creates its own synthetic bronze, silver, gold,
+and model outputs under a **new, empty local directory**, ignoring operational
+roots in `.env`:
+
+```powershell
+venv\Scripts\python.exe -m pipelines.quality.benchmark --output-root data/evaluation/quality-check
+```
+
+It tests six faults at three station-days each, records expected and observed
+rules, misses, raw model flags, and additional control incidents in
+`quality-benchmark.json`. Reuse requires a new output directory. See the
+[assessment progress](docs/assessment4-progress.md#step-3-missing-days-and-layer-1-fault-benchmark-15-october-2026)
+for the recorded run and limitations.
+
+The [offline fusion evaluation](docs/fusion-review.md) freezes local inputs,
+rebuilds both layers independently, checks candidate preservation and policy
+behavior, and generates the two-person review pack. Its results use a fresh
+isolated build; the older pipeline counts above are historical snapshots.
+
+The dashboard's **Explain one alert** view now brings together saved detector
+votes, feature values, readings, station-day quality incidents, and the trust
+penalty. Quarantined alerts remain visible and human review is explicitly
+unrecorded. See the [dashboard guide](dashboard/README.md#explain-one-alert)
+for local launch instructions and evidence downloads.
 
 ### Why R6 is currently disabled
 

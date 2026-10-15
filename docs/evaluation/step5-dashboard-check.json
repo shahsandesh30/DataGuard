@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "checked_at_utc": "2026-10-15T10:26:51.824464+00:00",
+  "source_sha256_normalized_lf": {
+    "dashboard/app.py": "692af771cecca493dd06b6167333b4f938394aff1ee0ddf3e60b519138c22e32",
+    "dashboard/data.py": "845963d0a6f79c008159d9242c0bf06f774eafac18dc08c23dc7bff6a727856c",
+    "dashboard/explanation.py": "7708515fd5c39a2aca04cd1bb7f8eeca1df3e613753a6fdbc6b8c2eeb2854bca",
+    "dashboard/alert_view.py": "1cd69737eb9b3a4c84525f9cc0f2f4caa43ef424ceea816acf13431b65481b5e",
+    "tests/test_alert_explanation.py": "71059f59fec3e5c0271c3f9a3aa1b7ce19294e78679d374e2214f8c97c36fe91"
+  },
+  "input": "Frozen Step 4 silver and independently rebuilt gold (15 October 2026)",
+  "input_build_times_utc": {
+    "layer1": "2026-10-15T08:37:13.344062+00:00",
+    "layer2": "2026-10-15T08:42:32.723282+00:00",
+    "fusion": "2026-10-15T08:42:33.739496+00:00"
+  },
+  "input_file_count": 108,
+  "input_file_manifest_sha256": "cfd022056779462023aa3a0ca2977692b55c51902d36c1b44de713a5e2b3a1d0",
+  "saved_alerts_checked": 175,
+  "status_counts": {
+    "escalated": 110,
+    "quarantined": 65
+  },
+  "verified_trust_calculations": 175,
+  "alerts_with_measurements_features_and_three_votes": 175,
+  "inconsistent_or_missing_evidence_warnings": 0,
+  "strict_json_serializations_passed": 175,
+  "input_bytes_unchanged": true,
+  "streamlit_app_test": {
+    "exceptions": 0,
+    "cases": [
+      {
+        "status": "quarantined",
+        "locationid": 1544061,
+        "date_local": "2026-01-02",
+        "parameter": "um003",
+        "rendered_calculation": "0.249001 × (1 − 70%) = 0.074700"
+      },
+      {
+        "status": "escalated",
+        "locationid": 1544061,
+        "date_local": "2026-01-09",
+        "parameter": "um003",
+        "rendered_calculation": "0.210962 × (1 − 0%) = 0.210962"
+      }
+    ]
+  },
+  "aws_access_and_storage_writes_blocked": true,
+  "human_review": "Pending; no reviewer judgments created or inferred",
+  "scope": "Saved-evidence consistency and native widget behavior, not model accuracy",
+  "visual_browser_qa": "Not performed; AppTest does not verify browser layout"
+}

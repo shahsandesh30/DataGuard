@@ -15,6 +15,7 @@ def test_rendered_aws_config_is_scoped_and_single_concurrency(tmp_path):
     )
 
     assert job["GlueVersion"] == "5.1"
+    assert job["Timeout"] == 60
     assert job["ExecutionProperty"]["MaxConcurrentRuns"] == 1
     assert job["DefaultArguments"]["--locations"] == (
         "1544061,1601414,2455394,6430870"

@@ -1,0 +1,185 @@
+{
+  "pack_id": "8330363836f9c9434e3917ee6e8867f4c69e5e19ff964d981fab496bb9db765b",
+  "seed": 42,
+  "parameter": "pm25",
+  "strata": [
+    {
+      "status": "escalated",
+      "population": 37,
+      "requested": 10,
+      "selected": 10,
+      "shortfall": 0
+    },
+    {
+      "status": "quarantined",
+      "population": 23,
+      "requested": 10,
+      "selected": 10,
+      "shortfall": 0
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "case-6391ad9d5d5f",
+      "locationid": 3358634,
+      "date_local": "2026-01-26",
+      "parameter": "pm25",
+      "status": "quarantined",
+      "incident_rule_ids": "R4"
+    },
+    {
+      "case_id": "case-01b1a2aad79b",
+      "locationid": 2455393,
+      "date_local": "2026-02-01",
+      "parameter": "pm25",
+      "status": "quarantined",
+      "incident_rule_ids": "R4,R7"
+    },
+    {
+      "case_id": "case-05963f023afc",
+      "locationid": 6146402,
+      "date_local": "2026-01-25",
+      "parameter": "pm25",
+      "status": "quarantined",
+      "incident_rule_ids": "R2"
+    },
+    {
+      "case_id": "case-9021ff0bfe84",
+      "locationid": 3229203,
+      "date_local": "2026-01-30",
+      "parameter": "pm25",
+      "status": "escalated",
+      "incident_rule_ids": ""
+    },
+    {
+      "case_id": "case-ece2303ae9d9",
+      "locationid": 1601414,
+      "date_local": "2026-01-04",
+      "parameter": "pm25",
+      "status": "quarantined",
+      "incident_rule_ids": "M1"
+    },
+    {
+      "case_id": "case-b7e1738f75ac",
+      "locationid": 1601414,
+      "date_local": "2026-01-02",
+      "parameter": "pm25",
+      "status": "escalated",
+      "incident_rule_ids": ""
+    },
+    {
+      "case_id": "case-4c0cf6f524f6",
+      "locationid": 6146402,
+      "date_local": "2026-01-26",
+      "parameter": "pm25",
+      "status": "quarantined",
+      "incident_rule_ids": "R2"
+    },
+    {
+      "case_id": "case-4ffea4dcd301",
+      "locationid": 1601414,
+      "date_local": "2026-01-25",
+      "parameter": "pm25",
+      "status": "escalated",
+      "incident_rule_ids": ""
+    },
+    {
+      "case_id": "case-c4de64096395",
+      "locationid": 6209161,
+      "date_local": "2026-01-26",
+      "parameter": "pm25",
+      "status": "quarantined",
+      "incident_rule_ids": "R2"
+    },
+    {
+      "case_id": "case-69a40c7c5241",
+      "locationid": 2455393,
+      "date_local": "2026-01-31",
+      "parameter": "pm25",
+      "status": "escalated",
+      "incident_rule_ids": ""
+    },
+    {
+      "case_id": "case-f8e1e9eb624a",
+      "locationid": 4719604,
+      "date_local": "2026-01-03",
+      "parameter": "pm25",
+      "status": "quarantined",
+      "incident_rule_ids": "R2"
+    },
+    {
+      "case_id": "case-5cb529b31337",
+      "locationid": 2392564,
+      "date_local": "2026-01-31",
+      "parameter": "pm25",
+      "status": "escalated",
+      "incident_rule_ids": ""
+    },
+    {
+      "case_id": "case-4d4c11955f80",
+      "locationid": 6092254,
+      "date_local": "2026-01-04",
+      "parameter": "pm25",
+      "status": "escalated",
+      "incident_rule_ids": ""
+    },
+    {
+      "case_id": "case-ee115df0b861",
+      "locationid": 1601414,
+      "date_local": "2026-01-10",
+      "parameter": "pm25",
+      "status": "escalated",
+      "incident_rule_ids": ""
+    },
+    {
+      "case_id": "case-b9ee699ca402",
+      "locationid": 2455393,
+      "date_local": "2026-01-11",
+      "parameter": "pm25",
+      "status": "escalated",
+      "incident_rule_ids": ""
+    },
+    {
+      "case_id": "case-1099b33f7719",
+      "locationid": 6146402,
+      "date_local": "2026-01-12",
+      "parameter": "pm25",
+      "status": "quarantined",
+      "incident_rule_ids": "R2"
+    },
+    {
+      "case_id": "case-92977451d671",
+      "locationid": 3358634,
+      "date_local": "2026-01-11",
+      "parameter": "pm25",
+      "status": "escalated",
+      "incident_rule_ids": ""
+    },
+    {
+      "case_id": "case-4bb85d3df543",
+      "locationid": 4719604,
+      "date_local": "2026-01-22",
+      "parameter": "pm25",
+      "status": "quarantined",
+      "incident_rule_ids": "R2"
+    },
+    {
+      "case_id": "case-4f9207145d72",
+      "locationid": 1601414,
+      "date_local": "2026-01-16",
+      "parameter": "pm25",
+      "status": "escalated",
+      "incident_rule_ids": ""
+    },
+    {
+      "case_id": "case-bc9f28890041",
+      "locationid": 6092254,
+      "date_local": "2026-01-05",
+      "parameter": "pm25",
+      "status": "quarantined",
+      "incident_rule_ids": "R2,R4"
+    }
+  ],
+  "reviewers_required": 2,
+  "sampling_warning": "Balanced status sample; pooled metrics are not population estimates"
+}

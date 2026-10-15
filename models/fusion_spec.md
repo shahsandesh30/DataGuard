@@ -16,8 +16,16 @@ deleted or hidden.
 | Escalated / quarantined status | **Active** |
 | Gold publish `data/gold/fusion/trust_alerts/` | **Active** |
 
-Latest audited local snapshot: **253 alerts — 181 escalated, 72 quarantined**,
+Historical documented local snapshot: **253 alerts — 181 escalated, 72 quarantined**,
 with trust scores spanning 0.055 to 0.905.
+
+The fresh, isolated Step 4 run (15 October 2026) produces **175 alerts — 110
+escalated, 65 quarantined (37.1%)**. Every Layer 2 candidate is preserved.
+Mean alert score is 0.332; mean trust score is 0.267. These are descriptive
+decisions, not verified accuracy. See the
+[measured report](../docs/evaluation/step4-fusion-evaluation.json) and
+[reproduction/review guide](../docs/fusion-review.md). Older cached outputs
+and documented counts are not a paired before/after baseline for this run.
 
 ```bash
 python -m pipelines quality
@@ -86,6 +94,49 @@ occur on healthy data days.
 Weak labels from Layer 2 remain evaluation-only; fusion does not retrain
 detectors.
 
+### Step 4 automated evidence
+
+The evaluation copies local bronze, frozen Step 2 silver, and Step 3 benchmark
+outputs into a new directory and records input/source hashes and runtime
+versions. The detectors rebuild independently before production fusion runs;
+production policy and model settings are unchanged. This production-style
+refit is separate from Step 2's held-out evaluation.
+
+Layer 1 now covers **505 station-days** across 16 requested stations, including
+**152 days with zero readings** and 353 observed days. Silver contains 38,449
+readings at 14 locations, yielding 995 Layer 2 feature rows. File absence can
+therefore produce quality-only evidence without a Layer 2 candidate.
+
+The controlled checks feed actual Step 3 incidents into fusion with supplied
+candidate alerts. All **42 policy checks pass**:
+
+- All 18 faulty-data candidates are quarantined.
+- All 18 candidates on healthy control data are escalated.
+- Three schema-recovery candidates are quarantined because R8 also marks
+  restoration of the original header.
+- An assumed regional event at three stations retains two escalated candidates
+  and holds one with a coincident quality issue. This exposes a possible cost
+  of the policy, rather than claiming perfect event retention.
+
+The candidate scores and event assumption are constructed. These checks do
+not measure detector recall or verified false positives. Actual Step 3 faults
+such as an entirely missing file may produce no Layer 2 candidate at all.
+
+### Independent human evidence: pending
+
+A fixed sample contains ten escalated and ten quarantined PM2.5 cases, drawn
+randomly within status with seed 42. Both teammates review the same shuffled
+cases independently. The shared HTML page withholds fusion decisions, scores,
+rule IDs, detector votes, and weak labels. It supplies exact current-day
+readings, prior-seven-day hourly context, original units, and available peers
+within 50 km. The lead retains the separate answer key until review finishes.
+
+The scorer requires two distinct reviewer IDs, matching evidence-pack IDs,
+valid labels, and notes. It counts paired complete responses, disagreement,
+uncertainty, and missing coverage; it never fills in human labels. Rates remain
+unavailable when no eligible consensus judgments exist. The status-balanced
+sample's pooled results are not population accuracy or false-positive rates.
+
 ## Limitations
 
 - **Fusion is alert-driven.** No Layer 2 alerts means no fusion rows, even when
@@ -96,10 +147,10 @@ detectors.
   (duplicate readings) quarantines an alert exactly as firmly as a high-severity
   R2 (stuck sensor). The severity penalty grades the *score* but not the
   *status*; fine-grained per-rule policy is deferred.
-- **The headline metric has not been computed.** How much quarantine actually
-  reduces false alerts, while retaining genuine events, is the whole claim of
-  the project and is still unmeasured. It depends on Layer 2 evaluation, which
-  depends on a seeded-failure test for Layer 1.
+- **Real false-alert reduction and event retention remain unverified.** The
+  automated counts and controlled policy checks are measured, and a 20-case
+  review pack is ready. Two independent human judgments are still required;
+  human consensus will itself remain weaker evidence than reference monitors.
 - A rule that fires on nearly every station-day will quarantine nearly every
   alert. Always check the `rule_id` histogram before quoting a quarantine rate
   as a result — see the R6 episode in `docs/data-source.md`.

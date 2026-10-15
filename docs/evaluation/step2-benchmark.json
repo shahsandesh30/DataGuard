@@ -1,0 +1,145 @@
+{
+  "methodology_version": 2,
+  "built_at_utc": "2026-10-15T05:03:14.785393+00:00",
+  "input_measurement_rows": 38449,
+  "feature_rows": 995,
+  "dataset": {
+    "sha256": "ef8b0ab9b87efbd514bd25e9f780532bb4cdf7a1d51bdb3cd9537fa4513f438e",
+    "rows": 38449,
+    "locations": [
+      1544061,
+      1601414,
+      1707188,
+      2392564,
+      2455393,
+      2455394,
+      3229203,
+      3358634,
+      3772130,
+      4719604,
+      6092254,
+      6123216,
+      6146402,
+      6209161
+    ],
+    "date_local_min": "2026-01-01",
+    "date_local_max": "2026-02-01",
+    "parameter_rows": {
+      "pm25": 7987,
+      "temperature": 7987,
+      "relativehumidity": 7987,
+      "pm1": 7244,
+      "um003": 7244
+    }
+  },
+  "configuration": {
+    "holdout_fraction": 0.25,
+    "hourly_baseline": "training dates only",
+    "injection_seed": 42,
+    "injection_magnitude": 3.0,
+    "local_spikes_requested": 6,
+    "regional_dates_requested": 2,
+    "minimum_prior_observed_days": 7,
+    "injection_hours_local": [
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+    ],
+    "top_k_alerts_per_region_day": 10
+  },
+  "versions": {
+    "python": "3.12.9",
+    "pandas": "3.0.5",
+    "numpy": "2.5.2",
+    "scikit_learn": "1.9.0"
+  },
+  "holdout": [
+    {
+      "parameter": "pm1",
+      "train_dates": 24,
+      "holdout_dates": 8,
+      "train_rows": 255,
+      "holdout_rows": 66,
+      "train_flag_rate": 0.16862745098039217,
+      "holdout_flag_rate": 0.45454545454545453,
+      "holdout_if_rate": 0.25757575757575757,
+      "holdout_lof_rate": 0.3939393939393939,
+      "holdout_dbscan_rate": 0.18181818181818182,
+      "holdout_weak_label_precision": null,
+      "holdout_weak_label_base_rate": null,
+      "holdout_weak_label_lift": null,
+      "train_date_max": "2026-01-24",
+      "holdout_date_min": "2026-01-25"
+    },
+    {
+      "parameter": "pm25",
+      "train_dates": 24,
+      "holdout_dates": 8,
+      "train_rows": 279,
+      "holdout_rows": 74,
+      "train_flag_rate": 0.16129032258064516,
+      "holdout_flag_rate": 0.3918918918918919,
+      "holdout_if_rate": 0.21621621621621623,
+      "holdout_lof_rate": 0.3108108108108108,
+      "holdout_dbscan_rate": 0.17567567567567569,
+      "holdout_weak_label_precision": 0.9310344827586207,
+      "holdout_weak_label_base_rate": 0.6351351351351351,
+      "holdout_weak_label_lift": 1.4658840792369774,
+      "train_date_max": "2026-01-24",
+      "holdout_date_min": "2026-01-25"
+    },
+    {
+      "parameter": "um003",
+      "train_dates": 24,
+      "holdout_dates": 8,
+      "train_rows": 255,
+      "holdout_rows": 66,
+      "train_flag_rate": 0.19607843137254902,
+      "holdout_flag_rate": 0.3939393939393939,
+      "holdout_if_rate": 0.24242424242424243,
+      "holdout_lof_rate": 0.3181818181818182,
+      "holdout_dbscan_rate": 0.24242424242424243,
+      "holdout_weak_label_precision": null,
+      "holdout_weak_label_base_rate": null,
+      "holdout_weak_label_lift": null,
+      "train_date_max": "2026-01-24",
+      "holdout_date_min": "2026-01-25"
+    }
+  ],
+  "holdout_skipped": [],
+  "injection": {
+    "parameter": "pm25",
+    "magnitude": 3.0,
+    "injected": 27,
+    "injected_scored": 27,
+    "recall": 0.18518518518518517,
+    "recall_local": 0.3333333333333333,
+    "recall_regional": 0.14285714285714285,
+    "untouched_alert_rate": 0.1687116564417178,
+    "injected_by_kind": {
+      "local": 6,
+      "regional": 21
+    },
+    "scored_by_kind": {
+      "local": 6,
+      "regional": 21
+    },
+    "skipped": {
+      "insufficient_history": 92,
+      "no_window_readings": 15,
+      "local_shortfall": 0,
+      "regional_date_shortfall": 0,
+      "unscored": 0
+    }
+  },
+  "limitations": [
+    "PM2.5 weak labels are a heuristic, not verified pollution events.",
+    "Spike recall refits on perturbed history and is measured after the top-K cap.",
+    "Untouched real readings are unlabelled; their alert rate is not a false-alarm rate."
+  ]
+}

@@ -13,7 +13,7 @@ remain the primary detection path.
 | Deterministic rules | **Active** — primary detection path |
 | Isolation Forest | **Active** — trains once a location has ≥14 station-days |
 
-Last run (January 2026, four Sydney stations): **98 station-days → 13 rule
+Historical operational run (January 2026, four Sydney stations): **98 station-days → 13 rule
 incidents + 1 model incident**, `model_trained: true`.
 
 The model is gated on history by design. Below `MIN_STATION_DAYS` (14) for every
@@ -58,15 +58,60 @@ rule already caught, so it has to earn its place.
 | E7 Schema/units | R8, R10 | Bronze header drift + unit mismatch |
 | E8 Metadata drift | Deferred | Needs longer metadata history |
 
-Synthetic injection (per `docs/data-source.md`) is for precision/recall curves
-only — not primary evidence.
+Synthetic injection checks controlled fault coverage; real-world accuracy
+still requires independent evidence.
+
+## Controlled fault benchmark (15 October 2026)
+
+Run the actual conformance and quality stages using synthetic gzipped archive
+files and their arrival manifest. The required output root must be local and
+empty; each run creates isolated bronze, silver, gold, and model roots without
+using operational `.env` roots:
+
+```powershell
+venv\Scripts\python.exe -m pipelines.quality.benchmark --output-root data/evaluation/quality-check
+```
+
+The deterministic baseline contains three synthetic stations, 21 local days,
+two hourly PM2.5 sensors per station, and **3,024 readings / 63 station-days**.
+Concentrations vary while cadence and sensor spread remain regular. Timestamps
+have an explicit +11:00 offset. Manifest arrival times represent timely
+deliveries; R6 stays disabled. Each fault starts from the same baseline in a
+separate directory and affects three interior station-days with prior history.
+
+- Frozen sensor: **3/3**, R2 and R3.
+- Negative readings: **3/3**, R1; all nine negative values survive into silver.
+- Sensor dropout: **3/3**, R5.
+- Missing daily file: **3/3**, R4, R5, and R7; zero-reading days remain visible.
+- Schema drift: **3/3**, R8.
+- Incorrect particulate unit label (`ppm`): **3/3**, R10; original labels survive.
+
+All **18/18 cases** and **27/27 expected rule checks** were detected, with no
+unscored targets or misses. The healthy baseline produced zero rule/model
+incidents. Across the six fault runs, **3/360 untouched control station-day
+occurrences (0.83%)** were flagged: R8 on the day after each schema injection,
+because restoring the original header is another schema transition. This
+denominator counts separate copies, not 360 distinct real station-days.
+
+Isolation Forest trained in each run and flagged 15/18 target cases before
+rule de-duplication; it flagged none of the schema cases or controls. It added
+zero published incidents because rules already caught its flagged days.
+The production model refits on each scenario, so these flags are **in-sample
+behaviour, not held-out model accuracy**.
+
+The report records per-case expected/observed rules, misses, raw and reported
+model flags, additional control incidents, dataset/configuration, runtime
+versions, and source/input hashes. Recorded results:
+[`docs/evaluation/step3-quality-benchmark.json`](../docs/evaluation/step3-quality-benchmark.json).
 
 ## Limitations
 
-- **No seeded-failure test yet.** The rules have never been checked against
-  deliberately corrupted data, so "Layer 1 detects known failures" is currently
-  an assertion. This is the project's go/no-go gate (`docs/risk-register.md`)
-  and the top open task.
+- **Controlled coverage is narrow.** Three repetitions per fault use one
+  parameter, cadence, local offset, and fault strength. These controls do not
+  estimate real-world false positives; schema recovery adds incidents too.
+- Days without readings and without a manifest attempt cannot be inferred.
+  Archive filename/local-day boundary assumptions still affect R7; see the
+  data-source notes. An expected sensor roster needs prior observed readings.
 - `contamination=0.05` is an assumption, not a measurement — it asserts 5% of
   station-days are anomalous.
 - No accuracy metric without reference monitors.

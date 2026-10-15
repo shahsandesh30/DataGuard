@@ -1,0 +1,405 @@
+# Assessment 4 technical progress
+
+## Step 1: reliable baseline (15 October 2026)
+
+The sprint starts from commit `a93bc52` on branch `sandesh_shahi`, after the
+Layer 2 evaluation and model-persistence changes merged from main.
+
+The pre-change Windows check recorded 116 passing tests and one failing
+`test_local_text_round_trip`. Ruff and the Glue ZIP import check passed.
+
+Existing local work was present in the README, deployment documentation,
+Glue runner, conformance timestamp handling, AWS configuration/upload scripts,
+and their tests. Those edits remain in the working tree. The starting status,
+binary Git diff, and copies of those tracked files were captured locally under
+`build/assessment4-step1/baseline/` before Step 1 edits. Generated artifacts and
+existing untracked files are excluded from the Step 1 commit.
+
+### Changes
+
+- Restore universal newline handling in `storage.read_text` on both backends.
+  UTF-8 text reads use LF consistently; `read_bytes` preserves original bytes
+  for model artifacts. Regression cases cover LF, CRLF, and CR with string and
+  Path inputs, including non-ASCII text.
+- Set the generated Glue job timeout to 60 minutes. This changes the renderer;
+  an existing AWS job is unchanged until its configuration is updated.
+- Add an offline integration check that passes rendered roots, model storage,
+  station defaults, and the Glue database through the scheduled entry point
+  into the pipeline CLI. Existing policy tests check model-storage access and
+  the read-only dashboard boundary.
+
+### Verification
+
+- Full combined working tree: **124 tests passed**.
+- Exact staged source, excluding unrelated local edits: **123 tests passed**.
+  The one-test difference is the existing local daylight-saving regression
+  test, which is preserved outside this commit.
+- Ruff passed for `pipelines dashboard tests glue scripts` in both source trees.
+- The staged Glue ZIP imported the pipeline, storage, model store, and offline
+  benchmark successfully from outside the repository.
+- Existing LOF fixture and joblib/NumPy deprecation warnings remain; neither
+  test run had failures.
+
+JUnit results are saved locally as
+`build/assessment4-step1/working-tree-tests.xml` and
+`build/assessment4-step1/staged-source-tests.xml`.
+
+All checks use the repository venv and explicit local bronze, silver, gold,
+and model roots. S3 behaviour uses fake clients; no AWS pipeline is started.
+Step 1 did not change evaluation methodology; Step 2 below addresses that work.
+
+## Step 2: corrected Layer 2 evaluation (15 October 2026)
+
+Step 2 starts from `12761ec`. The existing local silver was frozen into
+`data/evaluation/step2-20261015/silver/`: 14 byte-identical Parquet files. The
+snapshot manifest is `data/evaluation/step2-20261015/snapshot.json`; its file
+manifest SHA-256 is
+`bdc57bf64a4e439a2ea4ff6247d31c31f4d7549e3f5a5d8a7916113bb4b7d71d`.
+Raw inputs and working outputs stay outside version control under `data/`.
+A small versioned copy of the measured results is kept in
+[`evaluation/step2-benchmark.json`](evaluation/step2-benchmark.json).
+
+### Methodology changes
+
+- Split raw silver by local date before building training features. Freeze
+  hourly median/MAD baselines, eligible station/parameter pairs, and neighbour
+  geography to training readings. Fit the scaler and ensemble on training
+  feature rows. Held-out rolling and daily trailing features retain earlier
+  observations without contributing future readings to the fitted reference.
+- Require seven prior observed days and finite injection-hour readings. Mark
+  only station-days whose values actually changed. Record history/window
+  exclusions, sample shortfalls, unscored cases, and local/regional denominators.
+- Rename the unlabelled comparison population's metric to
+  `untouched_alert_rate`. It is not a measured false-positive rate. Synthetic
+  recall still refits on perturbed history and includes the daily top-K cap.
+- Record all weak-label metrics as unavailable for pm1 and um003. Preserve
+  numeric nullable Parquet columns for local/S3 compatibility. Mask misleading
+  zeros in older histories on read without rewriting stored data.
+- Keep legacy benchmark reports readable, map their former metric name, and
+  show a dashboard rerun warning. Mark historical model-card results as
+  superseded for holdout/injection interpretation.
+- Add methodology version 2, a logical dataset fingerprint, coverage,
+  configuration, split dates, skipped parameters, and runtime library versions
+  to the benchmark JSON. Source hashes and a patch are captured beside the
+  snapshot in `source-provenance.json` and `source.patch`.
+
+### Reproduce the fixed-data run
+
+Use the repository venv and the frozen local silver copy:
+
+```powershell
+$env:BRONZE_ROOT = "data/bronze"
+$env:SILVER_ROOT = "data/evaluation/step2-20261015/silver"
+$env:GOLD_ROOT = "data/evaluation/step2-20261015/gold"
+$env:MODELS_ROOT = "build/assessment4-step2/test-models"
+venv\Scripts\python.exe -m pipelines evaluate `
+  --silver-root data/evaluation/step2-20261015/silver `
+  --gold-root data/evaluation/step2-20261015/gold
+```
+
+The output is
+`data/evaluation/step2-20261015/gold/layer2/_detection_benchmark.json`.
+This isolated run leaves operational silver, gold, and model artifacts intact.
+
+### Results and verification
+
+The frozen input contains **38,449 readings at 14 locations**, covering local
+dates 1 January to 1 February 2026, and produces **995 feature rows**. Each
+parameter uses 24 training dates ending 24 January and eight held-out dates
+starting 25 January. No parameter was skipped.
+
+- **PM2.5:** 45/279 training rows flagged (16.1%), compared with 29/74 held-out
+  rows (39.2%). Of those held-out flags, 27/29 match the weak label (93.1%);
+  its population base rate is 47/74 (63.5%), giving **lift 1.47**. These are
+  heuristic agreements, not verified event accuracy.
+- **Other parameters:** held-out flag rates are 30/66 for pm1 (45.5%) and
+  26/66 for um003 (39.4%). Weak-label metrics are unavailable for both.
+- **Synthetic PM2.5 spikes:** **5/27 detected (18.5%)**, including 2/6 local
+  cases (33.3%) and 3/21 regional cases (14.3%). All 27 injected cases reached
+  scoring; there were no requested-sample shortfalls. Eligibility excluded
+  92 station-days without seven prior observed days and 15 without usable
+  injection-hour readings.
+- **Untouched population:** 55/326 rows became alerts (16.9%). They have no
+  verified normal labels, so this is not a false-positive rate.
+
+The corrected experiment still shows limited synthetic-event recall. This
+step establishes more reliable measurement; it does not improve or establish
+the detector's real-event accuracy. Independent alert review and fusion
+evaluation remain later steps. The January experiment is not directly
+comparable with the older August dataset in the model card.
+
+Validation: **140 tests passed** in the combined working tree and **139 passed**
+in the isolated staged source. The one-test difference is the preserved local
+daylight-saving test. Ruff and both Glue ZIP import checks passed. Existing
+LOF and joblib/NumPy warnings remain without test failures. Local JUnit logs
+are `build/assessment4-step2/tests.xml` and
+`build/assessment4-step2/staged-source-tests.xml`.
+
+## Step 3: missing days and Layer 1 fault benchmark (15 October 2026)
+
+Step 3 starts from `a839085` on `sandesh_shahi`. The existing nine tracked
+local edits were captured under `build/assessment4-step3/baseline/` before
+implementation. Unrelated local work remains outside this step's commit.
+
+### Missing-day fix
+
+Layer 1 now builds station-days from silver observations **and bronze manifest
+attempts**. Previously, a completely missing daily file could disappear from
+the metric table before R7 ran. Manifest-only rows now retain zero readings,
+missing rate 1.0, and file checks, even when silver is entirely empty.
+Repeated attempts produce one row; a successful retry recovers when the file
+and rebuilt silver arrive. The last observed sensor roster survives consecutive
+missing days. No unrecorded calendar gaps are invented. Negative/stuck readings
+remain in silver, and R6 remains disabled.
+
+### Reproduce the controlled run
+
+```powershell
+venv\Scripts\python.exe -m pipelines.quality.benchmark `
+  --output-root data/evaluation/step3-quality-rerun
+```
+
+The output root must be a new, empty local directory; the benchmark refuses
+S3 and existing files. Each scenario gets its own bronze, silver, gold, and
+model roots independently of operational `.env` settings. No live archive
+download or AWS write is needed. The generated `quality-benchmark.json` records
+input/source hashes, versions, expected/observed rules, misses, and controls.
+The versioned result is
+[`evaluation/step3-quality-benchmark.json`](evaluation/step3-quality-benchmark.json).
+
+### Results
+
+The baseline has three synthetic stations, 21 local days, two PM2.5 sensors
+per station, and hourly readings: **3,024 readings and 63 station-days**.
+Six separate copies each receive one fault type at three interior station-days.
+
+- Frozen sensor: **3/3**, both R2 and R3.
+- Negative readings: **3/3**, R1.
+- Sensor dropout: **3/3**, R5.
+- Completely missing daily file: **3/3**, R4, R5, and R7.
+- Schema drift: **3/3**, R8.
+- Incorrect unit label: **3/3**, R10.
+
+All **18/18 cases** reached scoring and all **27/27 expected rule checks**
+fired. There were no misses. The healthy baseline had no incidents. There
+were **three additional control incidents in 360 control station-day
+occurrences (0.83%)**: R8 when the original schema returned on the following
+day. These are recorded rather than removed from the denominator.
+
+Isolation Forest trained in every scenario. Its raw flags covered 15/18
+fault targets, with no control flags; all 15 were already caught by rules,
+so it added zero published incidents. These models refit on the perturbed
+data and do not provide a held-out accuracy estimate.
+
+This passes the narrow synthetic-fault gate in the risk register. Regular
+controls, three repetitions, and one parameter/region do not establish
+real-world accuracy or false-positive rates. Step 4 remains fusion evaluation
+and independent review of real alerts.
+
+### Verification
+
+- Full combined working tree: **151 tests passed**.
+- Exact staged source: **150 tests passed**. The difference is the preserved
+  local daylight-saving regression test, excluded from this commit.
+- Ruff passed for `pipelines dashboard tests glue scripts` in both trees.
+- Both Glue source ZIPs imported the pipeline, storage, model store, and new
+  quality benchmark from outside the repository.
+- The exact staged source reproduced every benchmark result. The versioned
+  report is copied from
+  `data/evaluation/step3-20261015-staged/quality-benchmark.json`; every normalized
+  source hash matches the Git index. Initial working-tree results are saved
+  separately under `data/evaluation/step3-20261015/`.
+- Regressions cover consecutive missing days, no silver, duplicate/invalid
+  manifest keys, successful retries, string/Path roots, fake S3, preserved
+  negative values/unit labels, unscored misses, and schema-reversion controls.
+- Eight unrelated tracked files remain byte-identical to the starting copies.
+  The README's original local edits are also preserved outside the commit.
+
+JUnit logs are `build/assessment4-step3/tests.xml` and
+`build/assessment4-step3/staged-source-tests.xml`. Existing LOF duplicate-fixture
+and joblib/NumPy deprecation warnings remain without failures. Operational
+data and AWS resources were not changed.
+
+## Step 4: fusion evaluation and independent-review preparation (15 October 2026)
+
+Step 4 starts from `231e93c` on `sandesh_shahi`. The nine pre-existing tracked
+local edits were captured under `build/assessment4-step4/baseline/`. Those
+edits remain outside this step's commit. No production detector, quality rule,
+severity penalty, or quarantine policy is changed.
+
+### Implementation and reproduction
+
+`pipelines.fusion.evaluation` requires explicit local roots, refuses S3 and
+non-empty output directories, and freezes original input bytes with a file
+manifest. Layer 1 and Layer 2 rebuild independently into isolated gold/model
+roots before production fusion runs. The versioned
+[measured report](evaluation/step4-fusion-evaluation.json) was produced by the
+exact staged source under `data/evaluation/step4-20261015/`. Every normalized
+pipeline source hash matches the index. Full commands and the review protocol
+are in [fusion-review.md](fusion-review.md).
+
+Inputs are local `data/bronze`, the frozen Step 2 silver, and the canonical
+Step 3 benchmark outputs. Original data/model zones and AWS resources are
+unchanged; the new run writes only inside its evaluation directory. Raw input
+copies and trained artifacts remain gitignored. A small report and a bounded
+review pack are versioned so teammates can review without rerunning models.
+
+### Fresh real-data results
+
+The input retains **38,449 readings at 14 observed locations**, covering
+1 January–1 February 2026, and produces **995 feature rows**. Layer 1 now
+covers **505 recorded station-days** at 16 requested locations: 353 with
+readings and **152 with none**, made visible by Step 3's manifest union. It
+reports 502 rule incidents and two model incidents. Incident counts are not
+pollution-event counts; multiple rules may mark the same day.
+
+The freshly fitted Layer 2 models produce **175 candidate alerts**. Fusion
+preserves all 175, with **110 escalated and 65 quarantined (37.1%)**. Mean alert
+score is 0.332 and mean trust score is 0.267. By parameter: pm1 has 36 escalated
+and 20 quarantined, PM2.5 has 37 and 23, and um003 has 37 and 22. Rule overlap
+counts are reported separately and must not be added together.
+
+The existing local cached gold holds 320 Layer 2 and fused alerts, while older
+documentation records a 253-alert snapshot. Neither is a paired before/after
+baseline for this isolated rebuild: the older build metadata lacks matching
+source/input provenance. These differences are not evidence that Step 4
+changed detector recall or accuracy. Step 2's corrected temporal/injection
+results remain the separate model-evaluation evidence.
+
+### Controlled policy results
+
+The evaluator supplies candidate alerts to actual Step 3 quality outputs;
+it does not pretend those candidates were detected from injected pollution.
+All **42 policy checks pass**:
+
+- 18/18 faulty-data candidates held for review.
+- 18/18 candidates on healthy control data escalated.
+- 3/3 schema-recovery candidates held because of R8's header transition.
+- An assumed three-station regional event has two candidates escalated and
+  one held because of a coincident quality issue. That hold is a visible
+  limitation of the policy, even though the policy-consistency check passes.
+
+Entirely missing days can yield only Layer 1 findings, so these conditional
+checks do not measure end-to-end event recall. Quarantine also retains rows;
+it is not deletion or a measured false-positive reduction.
+
+### Human review boundary
+
+The fixed decision-blind evidence page contains **20 PM2.5 cases**: ten sampled
+within each status using seed 42, with no shortfall. Each includes exact
+current-day measurements, original units, previous-seven-day hourly context,
+and available same-parameter peers within 50 km. The page excludes fusion
+status, scores, rule IDs, detector votes, and weak labels. The lead retains
+the separate case-to-decision key until independent judgments are submitted.
+
+`pipelines.fusion.review` summarizes two matching review exports. It rejects
+identical reviewer IDs, foreign packs, unknown/duplicate cases, invalid labels,
+and complete judgments without notes. Paired coverage, agreement, uncertainty,
+and disagreement remain explicit. Consensus event/non-event counts and held/
+escalated decisions are sample-only metrics with unavailable empty-denominator
+rates; the balanced sample cannot establish population accuracy.
+
+**Independent human review is pending: zero paired judgments.** Two teammates
+still need about 45–60 minutes each. No reviewer names, labels, agreement,
+real-event retention, or false-alert-reduction results have been invented.
+The technical implementation and automatic measurements are complete; the
+human-evidence part of Step 4 remains open.
+
+### Verification
+
+- Full combined working tree: **167 tests passed**.
+- Exact staged source: **166 tests passed**. The preserved local daylight-saving
+  test explains the one-test difference.
+- Ruff passed for `pipelines dashboard tests glue scripts` in both trees.
+- The staged Glue ZIP imports both new modules from outside the repository.
+- JavaScript syntax and a Node DOM-fixture check pass for rendering data,
+  empty defaults, navigation, draft validation, and review export. The same
+  behavior check also passes against the actual versioned 20-case page.
+- Browser visual QA remains unavailable: the built-in browser could not
+  reach the local preview. No visual-browser pass is claimed. The temporary
+  local preview server was stopped.
+- Existing LOF duplicate-fixture and joblib/NumPy warnings remain; the actual
+  data run also fell back from Windows physical-core discovery to logical
+  cores. All runs completed successfully.
+
+Local JUnit logs are `build/assessment4-step4/tests.xml` and
+`build/assessment4-step4/staged-source-tests.xml`. The unsigned review artifacts
+are under `docs/evaluation/step4-review/`; share only `review.html` with the
+two reviewers until both have submitted.
+
+## Step 5: explain one saved alert (15 October 2026)
+
+Step 5 starts from `43c9de5`. The dashboard's **Trust-scored alerts** tab now
+has an **Explain one alert** view above the aggregate charts. Select a
+station, local day, and pollutant within the current sidebar date scope.
+Selections reset when their available options change, including after a date
+filter or data refresh. Quarantined alerts remain selectable, and a date with
+only Layer 1 findings has an explicit empty-state message.
+
+### Evidence and interpretation
+
+- Show the saved status, original anomaly score, maximum-severity policy
+  penalty, stored trust score, and calculation when it can be verified.
+  Penalties do not stack and scores are not probabilities.
+- Show each recorded detector vote and selected feature values. These explain
+  which models voted and provide measurement context, not causal model
+  attribution. The legacy daily sustained-elevation feature counts consecutive
+  readings; its label does not claim measured elapsed hours.
+- Join supporting incidents on station and local day across pollutants. Show
+  readable rule findings, severity, source, and available metric evidence.
+  Missing-file findings retain the archive-name/local-day-boundary caveat.
+- Plot only the selected alert's silver readings, separating sensors and units.
+  Preserve negative and constant values, UTC/local timestamps, and original
+  units in the exact-readings table and JSON evidence download.
+- Warn about missing or conflicting incidents, snapshots, scores, and detector
+  votes, and about detector builds newer than fusion. Saved decisions remain
+  unchanged. Build timestamps alone cannot establish that arbitrary silver and
+  gold roots belong to one run; use the coherent Step 4 snapshot for the demo.
+- Show human review as **Not recorded in this dataset**. There is no human
+  review field in gold, and this view creates no reviewer labels or decisions.
+  The independent two-person Step 4 review remains pending. Reviewers should
+  use only the blind review page until both have submitted.
+
+Silver is read once inside the existing cache and reused for station geography
+and alert evidence. No model files, extra services, dependencies, detector fits,
+pipeline writes, or AWS deployments are required. Existing health, map, model,
+and aggregate alert views remain available; the selected station's full alert
+history is retained in an expander. The
+[dashboard guide](../dashboard/README.md#explain-one-alert) documents usage and
+the explicit local roots for the frozen demonstration.
+
+### Saved-data check
+
+The [measured report](evaluation/step5-dashboard-check.json) uses the exact
+staged dashboard/test source and Step 4's frozen silver and independently
+rebuilt gold. All **175 alerts** are explainable: **110 escalated and 65
+quarantined**. Every alert has a verified trust calculation, matching quality
+context, three available detector votes, saved features, matching measurements,
+and a strict JSON serialization. No missing/conflicting-evidence warnings
+occurred for that coherent snapshot.
+
+The check also renders one actual escalated case and one actual quarantined
+case using Streamlit AppTest. Both display the saved calculation and evidence
+download without exceptions. AWS access and storage writes are blocked during
+this check; all 108 source data/metadata files remain byte-identical. Normalized
+source hashes, input manifest fingerprint, and build times are in the report.
+This verifies evidence consistency and widget behavior, not event accuracy or
+human-review outcomes. AppTest does not verify browser layout; no browser
+visual QA pass is claimed.
+
+### Verification
+
+- Full combined working tree: **181 tests passed**.
+- Exact staged source: **180 tests passed**. The preserved unrelated local
+  daylight-saving test explains the one-test difference.
+- Ruff passed for `pipelines dashboard tests glue scripts` in both trees.
+- The staged Glue ZIP imports the pipeline modules from outside the repository.
+- Fourteen new tests cover exact station/day/pollutant matching, cross-pollutant
+  quality context, highest-severity scoring, malformed or missing evidence,
+  nullable votes, stale builds, JSON export, reused silver reads, read-only
+  public mode, and native Streamlit selection reruns.
+
+Local JUnit logs are `build/assessment4-step5/working-tree-tests.xml` and
+`build/assessment4-step5/staged-source-tests.xml`. Existing unrelated edits and
+raw evaluation/model artifacts are excluded from the Step 5 commit. Step 4's
+independent human review is still open.

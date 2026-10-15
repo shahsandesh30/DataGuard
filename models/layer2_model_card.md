@@ -100,8 +100,12 @@ weak-labelled, any model would score 100%. Lift is the number to compare.
 
 ### 2. Temporal holdout (`python -m pipelines evaluate`)
 
-`benchmark.temporal_holdout` fits each parameter on the first 75% of its dates
-and scores the last 25% out of sample, the way a scheduled run meets a new day.
+`benchmark.temporal_holdout` splits raw silver on each parameter's first 75%
+of local dates before feature fitting, then scores the last 25% out of sample.
+Training features are built separately. Hourly median/MAD reference baselines
+and the scaler use training readings only. Held-out rolling and daily trailing
+features may use earlier observations, but never future readings. Split dates
+and parameters skipped for insufficient history are recorded in the report.
 IF predicts held-out rows directly. LOF is refitted in novelty mode with the
 same neighbours and contamination. A DBSCAN point counts as noise unless it
 lies within `eps` of a core sample. "Flagged" means ≥ 1 detector vote, which is
@@ -111,18 +115,32 @@ the alert-table admission rule, measured before the top-K cap.
 
 `benchmark.injection_recall` adds known PM2.5 spikes to real silver: +3 × the
 station median for local hours 10–17. **Local** spikes hit one station-day.
-**Regional** spikes hit every station on one date. The benchmark then rebuilds
+**Regional** spikes hit every eligible station on a date with at least two
+eligible locations. The benchmark then rebuilds
 the features, refits, and counts how many injected station-days reach the final
-alert table. Spikes only go on days after the station's first 7 days, so each
-has a trailing baseline. Because the truth is known by construction, this is a
-real recall figure. `false_alarm_rate` is the share of untouched rows that
-became alerts.
+alert table. A case needs seven prior observed station-days and finite
+readings during the injection hours. Truth labels include only station-days
+whose readings actually changed. The report records exclusions, unscored
+cases, and local/regional denominators.
 
-Both offline checks write `gold/layer2/_detection_benchmark.json`. Neither
-runs inside `detect` or `run`, because together they take about two minutes on
-a month of silver.
+This is recall of synthetic perturbations after refitting on the modified
+history, measured after the daily top-K cap. `untouched_alert_rate` is the
+share of untouched feature rows that became alerts. Those real readings have
+no verified normal labels, so this is not a false-positive rate.
 
-### Results — August 2026 silver
+Both offline checks write `gold/layer2/_detection_benchmark.json`. Methodology
+version 2 records a row-order-independent dataset fingerprint, date/station
+coverage, configuration, and library versions. Neither check runs inside
+`detect` or `run`. The dashboard can read older reports, but warns that their
+evaluation needs rerunning. Weak-label metrics for pm1 and um003 are
+unavailable, including when reading older run history that stored zeros.
+
+### Legacy results — August 2026 silver (methodology version 1)
+
+The following historical comparison predates the corrected temporal split
+and injection eligibility checks. Its holdout and injection numbers must not
+be quoted as corrected validation. Methodology version 2 results are recorded
+in [Assessment 4 progress](../docs/assessment4-progress.md).
 
 50,233 measurements, 14 stations, 2026-08-01 → 2026-09-01, 1,280 feature rows.
 "Fixed eps" is the original `eps=1.5`. "Tuned eps" is the k-distance rule
@@ -154,41 +172,45 @@ station-days across 2 dates):
 | Recall | 0.68 | **0.21** |
 | Local recall | 0.67 | 0.50 |
 | Regional recall | 0.68 | **0.14** |
-| False-alarm rate | 0.40 | **0.15** |
+| Untouched-data alert rate (originally labelled false-alarm rate) | 0.40 | **0.15** |
 
-### What the numbers say
+### Interpretation of the historical comparison
 
-- **Tuning `eps` fixed DBSCAN's out-of-sample behaviour.** It now calls 8–22%
-  of held-out rows noise instead of 72–95%. Alert volume fell by about two
-  thirds, and PM2.5 lift rose on both training data (1.90) and held-out days
-  (1.50).
-- **The old injection recall was mostly flag-everything.** With fixed `eps`,
-  DBSCAN flagged 40% of untouched rows, so injected rows were caught largely by
-  volume. The recall-to-false-alarm ratio is about 1.7 before and 1.4 after:
-  the ensemble separates injected spikes from normal rows no better than before.
-- **Regional events are now the clear blind spot (recall 0.14).** When every
-  station rises together, peer features (`peer_z_score`, `spatial_isolation`)
-  look normal and the spiked rows sit close to each other, so no detector
-  isolates them. Smoke and dust look like this. The next fix belongs in the
-  features, for example a region-day deviation from the regional trailing
-  baseline, not in the detectors.
-- **Precision@3 (0.21) is below overall agreement (0.36).** The top-ranked rows
-  tend to be single-station anomalies, while weak labels mark *regional*
-  elevation. This is the same blind spot seen from the other side.
-- **pm1 and um003 have no weak labels.** The heuristic only covers PM2.5, so for
-  those parameters only the holdout flag rate is measurable.
+The in-sample counts document a reduction in alert volume after tuning `eps`.
+The older holdout rates and injected-spike recalls need rerunning with
+training-only hourly baselines and valid injection cases. They do not establish
+the ensemble's out-of-sample performance or the size of a regional blind spot.
+Use the corrected fixed-dataset benchmark before choosing another model or
+feature change. PM2.5 weak-label agreement remains proxy evidence; pm1 and
+um003 have no applicable weak-label evaluation.
 
 ## Limitations
 
 - **Weak labels are a heuristic, not ground truth.** Lift above 1.0 shows the
   alerts correlate with regional elevation; it does not show they are correct.
-- Injected spikes are clean rectangular bumps. Real smoke ramps up and down, so
-  injection recall is likely an upper bound.
+- Injected spikes are clean rectangular bumps and do not establish performance
+  on real smoke or dust. Large regional cases can exceed the daily top-K cap.
 - Trailing 7-day baselines are noisy with <7 days of history per station.
+- In temporal evaluation, hourly reference groups without enough training
+  observations use the existing zero-filled feature fallback; new station/
+  parameter pairs do not fit hourly statistics from held-out readings.
 - No reference-monitor accuracy metric.
 - `detect` still retrains and scores in-sample over the complete feature
-  history. Held-out flag rates are about twice the in-sample rates, so scores
-  are not calibrated probabilities.
+  history. Its scores are not calibrated probabilities; offline holdout uses a
+  separate training-only reference path.
+
+## Corrected fixed-data benchmark (methodology version 2)
+
+The January local snapshot contains 38,449 readings, 14 stations, and 995
+feature rows, with 24 training and eight held-out local dates. PM2.5 held-out
+flag rate is 29/74 (39.2%), with weak-label lift 1.47. Synthetic spike recall
+is 5/27 (18.5%): 2/6 local and 3/21 regional station-days. The untouched-data
+alert rate is 55/326 (16.9%); it is not a measured false-positive rate.
+
+Low synthetic-event recall remains an open limitation. These corrected
+January results cannot be compared directly with the older August figures.
+The full configuration, denominators, coverage, and library versions are in
+[`docs/evaluation/step2-benchmark.json`](../docs/evaluation/step2-benchmark.json).
 
 ## Agreement rates (synthetic fixtures)
 

@@ -1,0 +1,537 @@
+{
+  "methodology_version": 1,
+  "built_at_utc": "2026-10-15T05:16:36.740099+00:00",
+  "dataset": {
+    "synthetic": true,
+    "locations": [
+      900001,
+      900002,
+      900003
+    ],
+    "days_per_location": 21,
+    "start": "2026-01-01",
+    "end": "2026-01-21",
+    "sensors_per_station": 2,
+    "hourly_readings_per_sensor": 24,
+    "local_offset": "+11:00",
+    "baseline_input_sha256": "eef90a2c9de62ce70d98df6ade02e157fa918eb274d82ae7ab650629332649c0"
+  },
+  "methodology": {
+    "independent_scenarios": true,
+    "repetitions_per_fault": 3,
+    "model_min_station_days": 14,
+    "model_fit": "Production refit on each scenario, not held-out model accuracy",
+    "rule_R6_enabled": false,
+    "source_hash_normalization": "UTF-8 source text with LF line endings",
+    "control_denominator": "Station-day occurrences across six separate scenario copies",
+    "limitations": [
+      "Constructed regular hourly controls do not measure real-world false positives.",
+      "Three repetitions per fault; one region, parameter, cadence and fault strength.",
+      "Schema reversion is another header transition and can flag the following day.",
+      "No reference-monitor labels or independent Isolation Forest accuracy estimate."
+    ]
+  },
+  "runtime_versions": {
+    "python": "3.12.9",
+    "pandas": "3.0.5",
+    "numpy": "2.5.2",
+    "scikit-learn": "1.9.0"
+  },
+  "source_sha256": {
+    "__init__.py": "4175d268fcfda443297df90cb7c51ccdfe0c60fda2f1cd0d239306a4dd1a46c9",
+    "__main__.py": "f864a512159b1e8029ba47f46a15e9c34dd25066434dcc2c11cbb3646a93c473",
+    "build_metadata.py": "7fa179abaaadd5b85034d2a2e3c2dabd5aa35053392e33494f60fd4d60e79bf5",
+    "config.py": "00fa16dcf3ba87ab7d65abbfc3a462ab51e3e526ba5d6309a6aa0de243ab63c4",
+    "conformance/__init__.py": "bafb7ff1703a4836312a6e2dc8015e6c9989c06483ba405e319ea3c30ddbdc47",
+    "conformance/conform.py": "0b04fbd90beec5199c3b47f302b7f67b4781d48a881a79bce1a64d4f2dceb1c6",
+    "conformance/units.py": "13126b7bd01387e539d926543d9fdefce674d23f533cf71678c539fc4e9b5976",
+    "detection/__init__.py": "0c5674e5364a0a154be7bc92d1632df2164d6c64172eeb9bea1d46cc1fb3de64",
+    "detection/baseline.py": "9eb7877adf174f3a8836bf013f01db7252d4b7a8fd9f68fb565af7407b251493",
+    "detection/benchmark.py": "2fe05d7137163cad2c3f112bd607cb487d7cbb07b77d5f80bd043b252dd878f9",
+    "detection/build.py": "fad5d8822ebddfb4e19b2eb16aaf16783cfff40e5f257f79f8a14918e73ffbe3",
+    "detection/ensemble.py": "96ba76fa28b782e632a1676004adf35d6a2e9c5af37006aa47ca4ef156fdd5ad",
+    "detection/evaluation.py": "587f54e5fdeb8c7ee820a754da3599e715741538e4cdbf51a320c391a08bccd6",
+    "detection/features.py": "ea52379408aeef52cacb78940d9e4f55cb51381186d430f310da067f0eb88f03",
+    "fusion/__init__.py": "e2a31492637c45da1e38229d640c559af2513593fedb6e299a412206a26b008f",
+    "fusion/build.py": "6b8f7e06296d4b4f7d3fbc882f2a280b689ac149b137929a095368a691a5db4d",
+    "fusion/trust_score.py": "c51c9e8f726a52c778516d9d056a0fc69248b710e9f91afe42f58836ea5fe97c",
+    "ingestion/__init__.py": "396d167c85cc2c9d19070aca9d5d325e4d4032a19522d8374dcbdfb1c1bcf1ca",
+    "ingestion/fetch.py": "8e49bbe091de34931a0b56d9cc96a039bdd2266cb69fdafd4a881fc3ee980493",
+    "model_store.py": "cb9b57bc88cf24506fdc1f7c5a8873abfc2c6f8133d90ac4a9edbdc85cddbc3d",
+    "quality/__init__.py": "40c4dc00bd3ccf292cc1be833a52948fd4de6c043dc2bbc32ee74e302d91ee1a",
+    "quality/benchmark.py": "47ba376a71eb72a1ccda09e7dc1ef4da073664be0a788208b38e47ca44f1ff47",
+    "quality/build.py": "5bb001138cce5c8063995ba36c493c7c8ba0a6729ff5e88b468459f8e48733fc",
+    "quality/detector.py": "a2b164e76f68c7c2857ca82e1f81aae4cdc19f896b41d109ae6a3e9f96cf022a",
+    "quality/metrics.py": "e657a5980820eb9851b47808c82df8ac2b08e284644e1781ed75b06ba611ed0d",
+    "quality/rules.py": "a88a94ae1ed2a964d493a130b35d1702d34570bb66b979ea2c781e4a805681c9",
+    "storage.py": "3a4160e254c5550af71b3e4ed8ca4ac232010d27dea7d190445ea6e9f7c4e725"
+  },
+  "healthy_baseline": {
+    "station_day_rows": 63,
+    "rule_incident_rows": 0,
+    "reported_model_incident_rows": 0,
+    "raw_model_flagged_station_days": 0,
+    "targets": [],
+    "control_station_days": 63,
+    "control_rule_incident_rows": 0,
+    "control_model_incident_rows": 0,
+    "control_flagged_station_days": 0,
+    "untouched_control_flag_rate": 0.0,
+    "additional_control_incidents": [],
+    "scenario": "healthy_baseline",
+    "input_sha256": "eef90a2c9de62ce70d98df6ade02e157fa918eb274d82ae7ab650629332649c0",
+    "input_reading_rows": 3024,
+    "sensor_day_rows": 126,
+    "model_trained": true
+  },
+  "scenarios": [
+    {
+      "station_day_rows": 63,
+      "rule_incident_rows": 6,
+      "reported_model_incident_rows": 0,
+      "raw_model_flagged_station_days": 3,
+      "targets": [
+        {
+          "locationid": 900001,
+          "date_local": "2026-01-10",
+          "scored": true,
+          "expected_rule_ids": [
+            "R2",
+            "R3"
+          ],
+          "observed_rule_ids": [
+            "R2",
+            "R3"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900002,
+          "date_local": "2026-01-14",
+          "scored": true,
+          "expected_rule_ids": [
+            "R2",
+            "R3"
+          ],
+          "observed_rule_ids": [
+            "R2",
+            "R3"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900003,
+          "date_local": "2026-01-18",
+          "scored": true,
+          "expected_rule_ids": [
+            "R2",
+            "R3"
+          ],
+          "observed_rule_ids": [
+            "R2",
+            "R3"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        }
+      ],
+      "control_station_days": 60,
+      "control_rule_incident_rows": 0,
+      "control_model_incident_rows": 0,
+      "control_flagged_station_days": 0,
+      "untouched_control_flag_rate": 0.0,
+      "additional_control_incidents": [],
+      "scenario": "frozen_sensor",
+      "input_sha256": "84ab3075e1fea642325f125c43c23b762dedffca1520f7350a969e8bc9e4798b",
+      "input_reading_rows": 3024,
+      "sensor_day_rows": 126,
+      "model_trained": true
+    },
+    {
+      "station_day_rows": 63,
+      "rule_incident_rows": 3,
+      "reported_model_incident_rows": 0,
+      "raw_model_flagged_station_days": 3,
+      "targets": [
+        {
+          "locationid": 900001,
+          "date_local": "2026-01-10",
+          "scored": true,
+          "expected_rule_ids": [
+            "R1"
+          ],
+          "observed_rule_ids": [
+            "R1"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900002,
+          "date_local": "2026-01-14",
+          "scored": true,
+          "expected_rule_ids": [
+            "R1"
+          ],
+          "observed_rule_ids": [
+            "R1"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900003,
+          "date_local": "2026-01-18",
+          "scored": true,
+          "expected_rule_ids": [
+            "R1"
+          ],
+          "observed_rule_ids": [
+            "R1"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        }
+      ],
+      "control_station_days": 60,
+      "control_rule_incident_rows": 0,
+      "control_model_incident_rows": 0,
+      "control_flagged_station_days": 0,
+      "untouched_control_flag_rate": 0.0,
+      "additional_control_incidents": [],
+      "scenario": "negative_readings",
+      "input_sha256": "ba9bf6925b594c1496ea198a8846255257febe1082a41292425c409540723269",
+      "input_reading_rows": 3024,
+      "sensor_day_rows": 126,
+      "model_trained": true
+    },
+    {
+      "station_day_rows": 63,
+      "rule_incident_rows": 3,
+      "reported_model_incident_rows": 0,
+      "raw_model_flagged_station_days": 3,
+      "targets": [
+        {
+          "locationid": 900001,
+          "date_local": "2026-01-10",
+          "scored": true,
+          "expected_rule_ids": [
+            "R5"
+          ],
+          "observed_rule_ids": [
+            "R5"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900002,
+          "date_local": "2026-01-14",
+          "scored": true,
+          "expected_rule_ids": [
+            "R5"
+          ],
+          "observed_rule_ids": [
+            "R5"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900003,
+          "date_local": "2026-01-18",
+          "scored": true,
+          "expected_rule_ids": [
+            "R5"
+          ],
+          "observed_rule_ids": [
+            "R5"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        }
+      ],
+      "control_station_days": 60,
+      "control_rule_incident_rows": 0,
+      "control_model_incident_rows": 0,
+      "control_flagged_station_days": 0,
+      "untouched_control_flag_rate": 0.0,
+      "additional_control_incidents": [],
+      "scenario": "sensor_dropout",
+      "input_sha256": "20f63a9f636da214df2bea0517232123da6321ee2c672a7a7bb2ffc2d00732dc",
+      "input_reading_rows": 2952,
+      "sensor_day_rows": 123,
+      "model_trained": true
+    },
+    {
+      "station_day_rows": 63,
+      "rule_incident_rows": 9,
+      "reported_model_incident_rows": 0,
+      "raw_model_flagged_station_days": 3,
+      "targets": [
+        {
+          "locationid": 900001,
+          "date_local": "2026-01-10",
+          "scored": true,
+          "expected_rule_ids": [
+            "R4",
+            "R5",
+            "R7"
+          ],
+          "observed_rule_ids": [
+            "R4",
+            "R5",
+            "R7"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900002,
+          "date_local": "2026-01-14",
+          "scored": true,
+          "expected_rule_ids": [
+            "R4",
+            "R5",
+            "R7"
+          ],
+          "observed_rule_ids": [
+            "R4",
+            "R5",
+            "R7"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900003,
+          "date_local": "2026-01-18",
+          "scored": true,
+          "expected_rule_ids": [
+            "R4",
+            "R5",
+            "R7"
+          ],
+          "observed_rule_ids": [
+            "R4",
+            "R5",
+            "R7"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        }
+      ],
+      "control_station_days": 60,
+      "control_rule_incident_rows": 0,
+      "control_model_incident_rows": 0,
+      "control_flagged_station_days": 0,
+      "untouched_control_flag_rate": 0.0,
+      "additional_control_incidents": [],
+      "scenario": "missing_daily_file",
+      "input_sha256": "d35dad812d1015b0e8c4ae692db09ae988ac55962670648b01fcaa1857715851",
+      "input_reading_rows": 2880,
+      "sensor_day_rows": 120,
+      "model_trained": true
+    },
+    {
+      "station_day_rows": 63,
+      "rule_incident_rows": 6,
+      "reported_model_incident_rows": 0,
+      "raw_model_flagged_station_days": 0,
+      "targets": [
+        {
+          "locationid": 900001,
+          "date_local": "2026-01-10",
+          "scored": true,
+          "expected_rule_ids": [
+            "R8"
+          ],
+          "observed_rule_ids": [
+            "R8"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": false,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900002,
+          "date_local": "2026-01-14",
+          "scored": true,
+          "expected_rule_ids": [
+            "R8"
+          ],
+          "observed_rule_ids": [
+            "R8"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": false,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900003,
+          "date_local": "2026-01-18",
+          "scored": true,
+          "expected_rule_ids": [
+            "R8"
+          ],
+          "observed_rule_ids": [
+            "R8"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": false,
+          "reported_model_incident": false
+        }
+      ],
+      "control_station_days": 60,
+      "control_rule_incident_rows": 3,
+      "control_model_incident_rows": 0,
+      "control_flagged_station_days": 3,
+      "untouched_control_flag_rate": 0.05,
+      "additional_control_incidents": [
+        {
+          "locationid": 900001,
+          "date_local": "2026-01-11",
+          "rule_id": "R8"
+        },
+        {
+          "locationid": 900002,
+          "date_local": "2026-01-15",
+          "rule_id": "R8"
+        },
+        {
+          "locationid": 900003,
+          "date_local": "2026-01-19",
+          "rule_id": "R8"
+        }
+      ],
+      "scenario": "schema_drift",
+      "input_sha256": "27ebb2fde648c4b03906b364e7deacdbad93a55057ebf02682547df5218df62e",
+      "input_reading_rows": 3024,
+      "sensor_day_rows": 126,
+      "model_trained": true
+    },
+    {
+      "station_day_rows": 63,
+      "rule_incident_rows": 3,
+      "reported_model_incident_rows": 0,
+      "raw_model_flagged_station_days": 3,
+      "targets": [
+        {
+          "locationid": 900001,
+          "date_local": "2026-01-10",
+          "scored": true,
+          "expected_rule_ids": [
+            "R10"
+          ],
+          "observed_rule_ids": [
+            "R10"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900002,
+          "date_local": "2026-01-14",
+          "scored": true,
+          "expected_rule_ids": [
+            "R10"
+          ],
+          "observed_rule_ids": [
+            "R10"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        },
+        {
+          "locationid": 900003,
+          "date_local": "2026-01-18",
+          "scored": true,
+          "expected_rule_ids": [
+            "R10"
+          ],
+          "observed_rule_ids": [
+            "R10"
+          ],
+          "missing_expected_rule_ids": [],
+          "rule_detected": true,
+          "all_expected_rules_detected": true,
+          "raw_model_flagged": true,
+          "reported_model_incident": false
+        }
+      ],
+      "control_station_days": 60,
+      "control_rule_incident_rows": 0,
+      "control_model_incident_rows": 0,
+      "control_flagged_station_days": 0,
+      "untouched_control_flag_rate": 0.0,
+      "additional_control_incidents": [],
+      "scenario": "incorrect_unit_label",
+      "input_sha256": "ab594d9c64bcbcf3e30ef7503820b75aa4141ecef634f35344b8740474640f8a",
+      "input_reading_rows": 3024,
+      "sensor_day_rows": 126,
+      "model_trained": true
+    }
+  ],
+  "totals": {
+    "fault_cases": 18,
+    "scored_fault_cases": 18,
+    "rule_detected_cases": 18,
+    "all_expected_rules_detected_cases": 18,
+    "missed_expected_rule_cases": 0,
+    "raw_model_flagged_cases": 15,
+    "reported_model_incident_cases": 0,
+    "control_station_day_occurrences": 360,
+    "control_flagged_station_day_occurrences": 3,
+    "additional_control_incident_rows": 3
+  }
+}

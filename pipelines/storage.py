@@ -167,9 +167,11 @@ def write_bytes(uri: str | Path, data: bytes) -> None:
 
 
 def read_text(uri: str | Path) -> str | None:
-    """Read a small text file, or ``None`` when it does not exist."""
+    """Read UTF-8 text with universal newlines, or ``None`` when absent."""
     data = read_bytes(uri)
-    return None if data is None else data.decode("utf-8")
+    if data is None:
+        return None
+    return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
 
 
 def write_text(uri: str | Path, text: str) -> None:

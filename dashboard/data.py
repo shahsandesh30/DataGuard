@@ -40,9 +40,11 @@ BUILD_SUMMARIES = {
 _SEVERITY_RANK = {"high": 3, "medium": 2, "low": 1}
 
 
-def load_stations(silver_root: str | Path | None = None) -> pd.DataFrame:
+def load_stations(
+    silver_root: str | Path | None = None, *, measurements: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     """One row per locationid with median coordinates and a display name."""
-    silver = read_silver(silver_root)
+    silver = read_silver(silver_root) if measurements is None else measurements
     if silver.empty:
         return pd.DataFrame(columns=STATION_COLUMNS)
 
@@ -307,6 +309,16 @@ def load_benchmark(gold_root: str | Path | None = None) -> dict | None:
     if not text:
         return None
     try:
-        return json.loads(text)
+        report = json.loads(text)
     except json.JSONDecodeError:
         return None
+    if not isinstance(report, dict):
+        return None
+    injection = report.get("injection")
+    if (
+        isinstance(injection, dict)
+        and "untouched_alert_rate" not in injection
+        and "false_alarm_rate" in injection
+    ):
+        injection["untouched_alert_rate"] = injection["false_alarm_rate"]
+    return report

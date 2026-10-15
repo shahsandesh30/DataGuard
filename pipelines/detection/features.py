@@ -182,14 +182,16 @@ def _mad(series: pd.Series) -> float:
     return (series - med).abs().median()
  
  
-def _add_baseline_deviation(df: pd.DataFrame) -> pd.DataFrame:
+def _add_baseline_deviation(
+    df: pd.DataFrame, reference: pd.DataFrame | None = None
+) -> pd.DataFrame:
     """Diurnal baseline per (locationid, parameter, hour, is_weekend, season)
     plus robust-z deviation of the observed value from that baseline.
     """
     group_keys = ["locationid", "parameter", "hour", "is_weekend", "season"]
  
     baseline = (
-        df.groupby(group_keys)["value"]
+        (df if reference is None else reference).groupby(group_keys)["value"]
         .agg(
             baseline_median="median",
             baseline_n="count",
@@ -328,13 +330,18 @@ def _add_cross_parameter_features(df: pd.DataFrame) -> pd.DataFrame:
 HOURLY_REQUIRED_COLUMNS = ["locationid", "datetime", "parameter", "value", "latitude", "longitude"]
  
  
-def build_hourly_event_features(silver: pd.DataFrame) -> pd.DataFrame:
+def build_hourly_event_features(
+    silver: pd.DataFrame, *, baseline_reference: pd.DataFrame | None = None
+) -> pd.DataFrame:
     """Hourly features from materialised silver (`locationid`, `datetime`, lat/lon).
  
     Independent of :func:`build_event_features` (which works per station-day).
     Expects a datetime64 ``datetime`` column in local time and ``latitude`` /
     ``longitude`` columns (``lat`` / ``lon`` are accepted). Returns the input rows
     plus time, baseline-deviation, rolling, spatial and cross-parameter columns.
+    ``baseline_reference`` fixes the diurnal median/MAD, eligible station/
+    parameter pairs, and neighbour geography to training readings. Rolling
+    features still use preceding observations from ``silver``.
     """
     if silver is None or silver.empty:
         return pd.DataFrame(columns=HOURLY_REQUIRED_COLUMNS)
@@ -359,17 +366,31 @@ def build_hourly_event_features(silver: pd.DataFrame) -> pd.DataFrame:
     print(f"\nInitial silver data shape: {df.shape[0]} rows, {df.shape[1]} columns")
  
     print(f"\nDropping stations with < {MIN_ROWS_PER_STATION_PARAMETER} rows per parameter...")
-    df = _drop_insufficient_stations(df, MIN_ROWS_PER_STATION_PARAMETER)
+    reference = None
+    if baseline_reference is not None:
+        reference = baseline_reference.copy()
+        if "latitude" not in reference.columns and {"lat", "lon"}.issubset(reference.columns):
+            reference = reference.rename(columns={"lat": "latitude", "lon": "longitude"})
+        reference["parameter"] = reference["parameter"].str.lower()
+        reference = reference.sort_values(["locationid", "parameter", "datetime"])
+        reference = reference.drop_duplicates(
+            ["locationid", "parameter", "datetime"], keep="last"
+        )
+        reference = _drop_insufficient_stations(reference, MIN_ROWS_PER_STATION_PARAMETER)
+        reference = _add_time_parts(reference)
+        known = reference[["locationid", "parameter"]].drop_duplicates()
+        df = df.merge(known, on=["locationid", "parameter"], how="inner")
+    else:
+        df = _drop_insufficient_stations(df, MIN_ROWS_PER_STATION_PARAMETER)
     if df.empty:
         return pd.DataFrame(columns=HOURLY_REQUIRED_COLUMNS)
- 
+
     df = _add_time_parts(df)
- 
-    df = _add_baseline_deviation(df)
+    df = _add_baseline_deviation(df, reference)
  
     df = _add_rolling_features(df)
  
-    knn = _build_knn_table(df, NEIGHBOR_K)
+    knn = _build_knn_table(df if reference is None else reference, NEIGHBOR_K)
     df = _add_spatial_features(df, knn)
  
     df = _add_cross_parameter_features(df)
@@ -418,8 +439,14 @@ def _hourly_daily_aggregates(hourly: pd.DataFrame) -> pd.DataFrame:
  
     return agg.reset_index()
 
-def build_event_features(conformed: pd.DataFrame) -> pd.DataFrame:
-    """Return station-day-parameter features for event detection."""
+def build_event_features(
+    conformed: pd.DataFrame, *, baseline_reference: pd.DataFrame | None = None
+) -> pd.DataFrame:
+    """Return station-day-parameter features for event detection.
+
+    An optional training-only ``baseline_reference`` freezes hourly diurnal
+    statistics for offline evaluation. Daily trailing statistics remain causal.
+    """
     if conformed is None or conformed.empty:
         return _empty_features()
 
@@ -515,7 +542,7 @@ def build_event_features(conformed: pd.DataFrame) -> pd.DataFrame:
         "lat", "lon",
     }.issubset(conformed.columns)
     if has_coords:
-        hourly = build_hourly_event_features(conformed)
+        hourly = build_hourly_event_features(conformed, baseline_reference=baseline_reference)
         hourly_daily = _hourly_daily_aggregates(hourly)
     else:
         logger.warning(
