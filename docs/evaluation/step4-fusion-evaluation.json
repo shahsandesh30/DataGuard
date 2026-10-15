@@ -1,0 +1,769 @@
+{
+  "methodology_version": 1,
+  "built_at_utc": "2026-10-15T08:42:36.473280+00:00",
+  "source_hash_normalization": "UTF-8 source text with LF line endings",
+  "snapshot_manifest_sha256": "b4e6dfce4b445f01c5746b5004b57a125e137bd6c22621ee9e9cb60ec4debf2a",
+  "source_sha256": {
+    "__init__.py": "4175d268fcfda443297df90cb7c51ccdfe0c60fda2f1cd0d239306a4dd1a46c9",
+    "__main__.py": "f864a512159b1e8029ba47f46a15e9c34dd25066434dcc2c11cbb3646a93c473",
+    "build_metadata.py": "7fa179abaaadd5b85034d2a2e3c2dabd5aa35053392e33494f60fd4d60e79bf5",
+    "config.py": "00fa16dcf3ba87ab7d65abbfc3a462ab51e3e526ba5d6309a6aa0de243ab63c4",
+    "conformance/__init__.py": "bafb7ff1703a4836312a6e2dc8015e6c9989c06483ba405e319ea3c30ddbdc47",
+    "conformance/conform.py": "0b04fbd90beec5199c3b47f302b7f67b4781d48a881a79bce1a64d4f2dceb1c6",
+    "conformance/units.py": "13126b7bd01387e539d926543d9fdefce674d23f533cf71678c539fc4e9b5976",
+    "detection/__init__.py": "0c5674e5364a0a154be7bc92d1632df2164d6c64172eeb9bea1d46cc1fb3de64",
+    "detection/baseline.py": "9eb7877adf174f3a8836bf013f01db7252d4b7a8fd9f68fb565af7407b251493",
+    "detection/benchmark.py": "2fe05d7137163cad2c3f112bd607cb487d7cbb07b77d5f80bd043b252dd878f9",
+    "detection/build.py": "fad5d8822ebddfb4e19b2eb16aaf16783cfff40e5f257f79f8a14918e73ffbe3",
+    "detection/ensemble.py": "96ba76fa28b782e632a1676004adf35d6a2e9c5af37006aa47ca4ef156fdd5ad",
+    "detection/evaluation.py": "587f54e5fdeb8c7ee820a754da3599e715741538e4cdbf51a320c391a08bccd6",
+    "detection/features.py": "ea52379408aeef52cacb78940d9e4f55cb51381186d430f310da067f0eb88f03",
+    "fusion/__init__.py": "e2a31492637c45da1e38229d640c559af2513593fedb6e299a412206a26b008f",
+    "fusion/build.py": "6b8f7e06296d4b4f7d3fbc882f2a280b689ac149b137929a095368a691a5db4d",
+    "fusion/evaluation.py": "a7ffd1789b6edfea744fe00d7f506630e57c17f6845b6cebc778f66f0a67a64f",
+    "fusion/review.py": "5c72aceab78c857d5f53672245805e6c853743002a51d5bf96f2d46bc138049a",
+    "fusion/trust_score.py": "c51c9e8f726a52c778516d9d056a0fc69248b710e9f91afe42f58836ea5fe97c",
+    "ingestion/__init__.py": "396d167c85cc2c9d19070aca9d5d325e4d4032a19522d8374dcbdfb1c1bcf1ca",
+    "ingestion/fetch.py": "8e49bbe091de34931a0b56d9cc96a039bdd2266cb69fdafd4a881fc3ee980493",
+    "model_store.py": "cb9b57bc88cf24506fdc1f7c5a8873abfc2c6f8133d90ac4a9edbdc85cddbc3d",
+    "quality/__init__.py": "40c4dc00bd3ccf292cc1be833a52948fd4de6c043dc2bbc32ee74e302d91ee1a",
+    "quality/benchmark.py": "47ba376a71eb72a1ccda09e7dc1ef4da073664be0a788208b38e47ca44f1ff47",
+    "quality/build.py": "5bb001138cce5c8063995ba36c493c7c8ba0a6729ff5e88b468459f8e48733fc",
+    "quality/detector.py": "a2b164e76f68c7c2857ca82e1f81aae4cdc19f896b41d109ae6a3e9f96cf022a",
+    "quality/metrics.py": "e657a5980820eb9851b47808c82df8ac2b08e284644e1781ed75b06ba611ed0d",
+    "quality/rules.py": "a88a94ae1ed2a964d493a130b35d1702d34570bb66b979ea2c781e4a805681c9",
+    "storage.py": "3a4160e254c5550af71b3e4ed8ca4ac232010d27dea7d190445ea6e9f7c4e725"
+  },
+  "runtime_versions": {
+    "python": "3.12.9",
+    "pandas": "3.0.5",
+    "numpy": "2.5.2",
+    "scikit-learn": "1.9.0"
+  },
+  "dataset": {
+    "reading_rows": 38449,
+    "locations": 14,
+    "local_date_start": "2026-01-01",
+    "local_date_end": "2026-02-01",
+    "quality_station_days": 505,
+    "quality_rule_incidents": 502,
+    "quality_model_incidents": 2,
+    "event_feature_rows": 995
+  },
+  "real_snapshot": {
+    "candidate_alerts": 175,
+    "escalated": 110,
+    "quarantined": 65,
+    "quarantine_rate": 0.37142857142857144,
+    "mean_alert_score": 0.33163409233839264,
+    "mean_trust_score": 0.2674722831968741,
+    "all_alerts_preserved": true,
+    "by_parameter": {
+      "pm1": {
+        "candidate_alerts": 56,
+        "escalated": 36,
+        "quarantined": 20,
+        "quarantine_rate": 0.35714285714285715,
+        "mean_alert_score": 0.34019229979677196,
+        "mean_trust_score": 0.2841667251366854
+      },
+      "pm25": {
+        "candidate_alerts": 60,
+        "escalated": 37,
+        "quarantined": 23,
+        "quarantine_rate": 0.38333333333333336,
+        "mean_alert_score": 0.34499229101547807,
+        "mean_trust_score": 0.27162688735422147
+      },
+      "um003": {
+        "candidate_alerts": 59,
+        "escalated": 37,
+        "quarantined": 22,
+        "quarantine_rate": 0.3728813559322034,
+        "mean_alert_score": 0.3099264391469626,
+        "mean_trust_score": 0.24740169000924228
+      }
+    },
+    "quality_rules": [
+      {
+        "rule_id": "M1",
+        "incident_rows": 2,
+        "incident_station_days": 2,
+        "overlapping_alerts": 1,
+        "overlapping_quarantined_alerts": 1
+      },
+      {
+        "rule_id": "R2",
+        "incident_rows": 85,
+        "incident_station_days": 85,
+        "overlapping_alerts": 46,
+        "overlapping_quarantined_alerts": 46
+      },
+      {
+        "rule_id": "R3",
+        "incident_rows": 21,
+        "incident_station_days": 21,
+        "overlapping_alerts": 8,
+        "overlapping_quarantined_alerts": 8
+      },
+      {
+        "rule_id": "R4",
+        "incident_rows": 174,
+        "incident_station_days": 174,
+        "overlapping_alerts": 22,
+        "overlapping_quarantined_alerts": 22
+      },
+      {
+        "rule_id": "R5",
+        "incident_rows": 59,
+        "incident_station_days": 59,
+        "overlapping_alerts": 0,
+        "overlapping_quarantined_alerts": 0
+      },
+      {
+        "rule_id": "R7",
+        "incident_rows": 163,
+        "incident_station_days": 163,
+        "overlapping_alerts": 10,
+        "overlapping_quarantined_alerts": 10
+      }
+    ],
+    "quality_rule_overlap_is_additive": false,
+    "pm25_weak_label_context_only": {
+      "escalated": {
+        "alerts": 37,
+        "available_weak_labels": 37,
+        "weak_label_positive": 21
+      },
+      "quarantined": {
+        "alerts": 23,
+        "available_weak_labels": 23,
+        "weak_label_positive": 11
+      }
+    },
+    "human_verified_accuracy": null
+  },
+  "controlled_policy": {
+    "conditional_on_constructed_candidates": true,
+    "groups": {
+      "assumed_regional_event": {
+        "candidates": 3,
+        "escalated": 2,
+        "quarantined": 1,
+        "policy_checks_passed": 3
+      },
+      "data_fault_candidate": {
+        "candidates": 18,
+        "escalated": 0,
+        "quarantined": 18,
+        "policy_checks_passed": 18
+      },
+      "healthy_data_candidate": {
+        "candidates": 18,
+        "escalated": 18,
+        "quarantined": 0,
+        "policy_checks_passed": 18
+      },
+      "schema_recovery_candidate": {
+        "candidates": 3,
+        "escalated": 0,
+        "quarantined": 3,
+        "policy_checks_passed": 3
+      }
+    },
+    "cases": [
+      {
+        "scenario": "frozen_sensor",
+        "locationid": 900001,
+        "date_local": "2026-01-10",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.24000000000000005,
+        "incident_rule_ids": "R2,R3"
+      },
+      {
+        "scenario": "frozen_sensor",
+        "locationid": 900002,
+        "date_local": "2026-01-14",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.24000000000000005,
+        "incident_rule_ids": "R2,R3"
+      },
+      {
+        "scenario": "frozen_sensor",
+        "locationid": 900003,
+        "date_local": "2026-01-18",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.24000000000000005,
+        "incident_rule_ids": "R2,R3"
+      },
+      {
+        "scenario": "frozen_sensor",
+        "locationid": 900001,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "frozen_sensor",
+        "locationid": 900002,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "frozen_sensor",
+        "locationid": 900003,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "frozen_sensor",
+        "locationid": 900001,
+        "date_local": "2026-01-10",
+        "case_group": "assumed_regional_event",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.24000000000000005,
+        "incident_rule_ids": "R2,R3"
+      },
+      {
+        "scenario": "frozen_sensor",
+        "locationid": 900002,
+        "date_local": "2026-01-10",
+        "case_group": "assumed_regional_event",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "frozen_sensor",
+        "locationid": 900003,
+        "date_local": "2026-01-10",
+        "case_group": "assumed_regional_event",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "negative_readings",
+        "locationid": 900001,
+        "date_local": "2026-01-10",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.24000000000000005,
+        "incident_rule_ids": "R1"
+      },
+      {
+        "scenario": "negative_readings",
+        "locationid": 900002,
+        "date_local": "2026-01-14",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.24000000000000005,
+        "incident_rule_ids": "R1"
+      },
+      {
+        "scenario": "negative_readings",
+        "locationid": 900003,
+        "date_local": "2026-01-18",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.24000000000000005,
+        "incident_rule_ids": "R1"
+      },
+      {
+        "scenario": "negative_readings",
+        "locationid": 900001,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "negative_readings",
+        "locationid": 900002,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "negative_readings",
+        "locationid": 900003,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "sensor_dropout",
+        "locationid": 900001,
+        "date_local": "2026-01-10",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R5"
+      },
+      {
+        "scenario": "sensor_dropout",
+        "locationid": 900002,
+        "date_local": "2026-01-14",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R5"
+      },
+      {
+        "scenario": "sensor_dropout",
+        "locationid": 900003,
+        "date_local": "2026-01-18",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R5"
+      },
+      {
+        "scenario": "sensor_dropout",
+        "locationid": 900001,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "sensor_dropout",
+        "locationid": 900002,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "sensor_dropout",
+        "locationid": 900003,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "missing_daily_file",
+        "locationid": 900001,
+        "date_local": "2026-01-10",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.24000000000000005,
+        "incident_rule_ids": "R4,R5,R7"
+      },
+      {
+        "scenario": "missing_daily_file",
+        "locationid": 900002,
+        "date_local": "2026-01-14",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.24000000000000005,
+        "incident_rule_ids": "R4,R5,R7"
+      },
+      {
+        "scenario": "missing_daily_file",
+        "locationid": 900003,
+        "date_local": "2026-01-18",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.24000000000000005,
+        "incident_rule_ids": "R4,R5,R7"
+      },
+      {
+        "scenario": "missing_daily_file",
+        "locationid": 900001,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "missing_daily_file",
+        "locationid": 900002,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "missing_daily_file",
+        "locationid": 900003,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "schema_drift",
+        "locationid": 900001,
+        "date_local": "2026-01-10",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R8"
+      },
+      {
+        "scenario": "schema_drift",
+        "locationid": 900002,
+        "date_local": "2026-01-14",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R8"
+      },
+      {
+        "scenario": "schema_drift",
+        "locationid": 900003,
+        "date_local": "2026-01-18",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R8"
+      },
+      {
+        "scenario": "schema_drift",
+        "locationid": 900001,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "schema_drift",
+        "locationid": 900002,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "schema_drift",
+        "locationid": 900003,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "schema_drift",
+        "locationid": 900001,
+        "date_local": "2026-01-11",
+        "case_group": "schema_recovery_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R8"
+      },
+      {
+        "scenario": "schema_drift",
+        "locationid": 900002,
+        "date_local": "2026-01-15",
+        "case_group": "schema_recovery_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R8"
+      },
+      {
+        "scenario": "schema_drift",
+        "locationid": 900003,
+        "date_local": "2026-01-19",
+        "case_group": "schema_recovery_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R8"
+      },
+      {
+        "scenario": "incorrect_unit_label",
+        "locationid": 900001,
+        "date_local": "2026-01-10",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R10"
+      },
+      {
+        "scenario": "incorrect_unit_label",
+        "locationid": 900002,
+        "date_local": "2026-01-14",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R10"
+      },
+      {
+        "scenario": "incorrect_unit_label",
+        "locationid": 900003,
+        "date_local": "2026-01-18",
+        "case_group": "data_fault_candidate",
+        "expected_status": "quarantined",
+        "observed_status": "quarantined",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.48,
+        "incident_rule_ids": "R10"
+      },
+      {
+        "scenario": "incorrect_unit_label",
+        "locationid": 900001,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "incorrect_unit_label",
+        "locationid": 900002,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      },
+      {
+        "scenario": "incorrect_unit_label",
+        "locationid": 900003,
+        "date_local": "2026-01-05",
+        "case_group": "healthy_data_candidate",
+        "expected_status": "escalated",
+        "observed_status": "escalated",
+        "passed": true,
+        "alert_score": 0.8,
+        "trust_score": 0.8,
+        "incident_rule_ids": ""
+      }
+    ],
+    "end_to_end_event_recall": null,
+    "warning": "Policy consistency using Step 3 quality output; not detector accuracy"
+  },
+  "review_sampling": {
+    "pack_id": "8330363836f9c9434e3917ee6e8867f4c69e5e19ff964d981fab496bb9db765b",
+    "seed": 42,
+    "parameter": "pm25",
+    "strata": [
+      {
+        "status": "escalated",
+        "population": 37,
+        "requested": 10,
+        "selected": 10,
+        "shortfall": 0
+      },
+      {
+        "status": "quarantined",
+        "population": 23,
+        "requested": 10,
+        "selected": 10,
+        "shortfall": 0
+      }
+    ],
+    "reviewers_required": 2,
+    "sampling_warning": "Balanced status sample; pooled metrics are not population estimates"
+  },
+  "independent_review": {
+    "status": "pending",
+    "expected_cases": 20,
+    "reviewers": [],
+    "complete_judgments_by_reviewer": {},
+    "paired_complete_cases": 0,
+    "unpaired_cases": 20,
+    "event_agreement": null,
+    "quality_agreement": null,
+    "disagreement_case_ids": [],
+    "uncertain_case_ids": [],
+    "sample_only": {
+      "paired_cases": 0,
+      "consensus_supported_events": 0,
+      "supported_events_escalated": 0,
+      "supported_events_quarantined": 0,
+      "supported_event_escalation_rate": null,
+      "consensus_non_events": 0,
+      "non_events_quarantined": 0,
+      "non_event_quarantine_rate": null,
+      "consensus_data_issue_non_events": 0,
+      "data_issue_non_events_quarantined": 0
+    },
+    "by_status": {
+      "escalated": {
+        "paired_cases": 0,
+        "consensus_supported_events": 0,
+        "supported_events_escalated": 0,
+        "supported_events_quarantined": 0,
+        "supported_event_escalation_rate": null,
+        "consensus_non_events": 0,
+        "non_events_quarantined": 0,
+        "non_event_quarantine_rate": null,
+        "consensus_data_issue_non_events": 0,
+        "data_issue_non_events_quarantined": 0
+      },
+      "quarantined": {
+        "paired_cases": 0,
+        "consensus_supported_events": 0,
+        "supported_events_escalated": 0,
+        "supported_events_quarantined": 0,
+        "supported_event_escalation_rate": null,
+        "consensus_non_events": 0,
+        "non_events_quarantined": 0,
+        "non_event_quarantine_rate": null,
+        "consensus_data_issue_non_events": 0,
+        "data_issue_non_events_quarantined": 0
+      }
+    },
+    "limitations": [
+      "Human judgments are evidence support, not reference-monitor ground truth.",
+      "Balanced status sampling prevents treating pooled rates as population accuracy.",
+      "Disagreement and uncertainty remain unresolved; no automatic adjudication."
+    ]
+  },
+  "limitations": [
+    "Detectors refit on the snapshot; these decisions are not held-out accuracy.",
+    "Step 2's corrected temporal and injection results remain separate evidence.",
+    "Quarantined alerts remain visible; automatic escalation is reduced without deletion.",
+    "Any station-day quality incident applies to every alerted parameter on that day.",
+    "R7 archive/local-day boundary assumptions and backfill lateness can affect decisions.",
+    "Real event retention and false-alert reduction need two independent human judgments."
+  ]
+}

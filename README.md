@@ -207,15 +207,16 @@ Latest audited local run over the current bronze snapshot:
 | Conformance | Single queryable table | Working |
 | Layer 1 | Detects known failures unprompted | All 18 controlled fault cases detected; three additional schema-reversion incidents — see [model card](models/layer1_model_card.md#controlled-fault-benchmark-15-october-2026) |
 | Layer 2 | Ranked anomaly output | Working; proxy metrics and corrected temporal/injected-spike benchmarks — see [model card](models/layer2_model_card.md#evaluation) |
-| Fusion | Public dashboard URL | Trust engine working; dashboard runs locally, not deployed |
+| Fusion | Public dashboard URL | Offline fusion evaluation ready; human review pending; dashboard runs locally, not deployed |
 | Consolidation | Final report | Not started |
 
 ## Next steps
 
-1. **Evaluate fusion and independently review real alerts.** Use the corrected
-   Layer 2 results and the [Layer 1 controlled benchmark](docs/evaluation/step3-quality-benchmark.json)
-   to measure what fusion holds for review. Model artifacts are already saved
-   per run. Synthetic coverage does not establish real-event accuracy.
+1. **Complete the two-person alert review.** The [Step 4 evidence page](docs/evaluation/step4-review/review.html)
+   contains 20 PM2.5 cases for independent judgments. Follow the
+   [review guide](docs/fusion-review.md); the automated fusion run preserves all
+   175 candidates, escalating 110 and holding 65. This quarantine count does
+   not establish false-alert reduction or real-event accuracy.
 2. **Explain one alert in the dashboard.** Show the event evidence, quality
    incidents, trust penalty, and review status together using existing outputs.
 3. **Run the documented AWS backfill and enable the schedule**, then verify one
@@ -236,6 +237,11 @@ rules, misses, raw model flags, and additional control incidents in
 `quality-benchmark.json`. Reuse requires a new output directory. See the
 [assessment progress](docs/assessment4-progress.md#step-3-missing-days-and-layer-1-fault-benchmark-15-october-2026)
 for the recorded run and limitations.
+
+The [offline fusion evaluation](docs/fusion-review.md) freezes local inputs,
+rebuilds both layers independently, checks candidate preservation and policy
+behavior, and generates the two-person review pack. Its results use a fresh
+isolated build; the older pipeline counts above are historical snapshots.
 
 ### Why R6 is currently disabled
 

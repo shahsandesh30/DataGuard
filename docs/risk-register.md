@@ -36,3 +36,12 @@ This answers the narrow constructed-fault question. Three repetitions per
 fault and regular hourly controls do not establish real-world accuracy or a
 false-positive rate. Independent real-alert review and fusion evaluation
 remain open before making broader claims about reliability.
+
+Step 4 (15 October 2026) measures the unchanged fusion policy on a fresh
+isolated build: 175 candidates remain visible, 110 escalated and 65 quarantined.
+All 42 conditional policy checks pass, including the explicit risk of holding
+one station's candidate during an assumed three-station event. The
+[20-case review pack and instructions](fusion-review.md) are ready for two
+independent teammates (about 45–60 minutes each). Project risk R4 remains open:
+human judgments are pending, and quarantine counts alone do not establish
+false-alert reduction or genuine-event retention.

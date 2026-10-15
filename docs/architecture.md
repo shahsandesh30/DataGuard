@@ -109,5 +109,5 @@ Athena remains available for ad-hoc queries over the registered Glue tables.
 
 | Gap | Consequence |
 |---|---|
-| Real-world fault/event labels remain limited | Layer 1 detects 18/18 controlled faults with three schema-reversion control incidents; synthetic coverage and Layer 2 proxies still need independent real-alert review |
+| Real-world fault/event labels remain limited | Controlled Layer 1 and fusion checks pass; the 20-case independent review pack is ready, with human judgments still pending |
 | AWS resources created by hand for the demo | Recreate them with the generated policy/job JSON and deployment runbook; Terraform is deferred |

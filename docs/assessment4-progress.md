@@ -219,3 +219,110 @@ JUnit logs are `build/assessment4-step3/tests.xml` and
 `build/assessment4-step3/staged-source-tests.xml`. Existing LOF duplicate-fixture
 and joblib/NumPy deprecation warnings remain without failures. Operational
 data and AWS resources were not changed.
+
+## Step 4: fusion evaluation and independent-review preparation (15 October 2026)
+
+Step 4 starts from `231e93c` on `sandesh_shahi`. The nine pre-existing tracked
+local edits were captured under `build/assessment4-step4/baseline/`. Those
+edits remain outside this step's commit. No production detector, quality rule,
+severity penalty, or quarantine policy is changed.
+
+### Implementation and reproduction
+
+`pipelines.fusion.evaluation` requires explicit local roots, refuses S3 and
+non-empty output directories, and freezes original input bytes with a file
+manifest. Layer 1 and Layer 2 rebuild independently into isolated gold/model
+roots before production fusion runs. The versioned
+[measured report](evaluation/step4-fusion-evaluation.json) was produced by the
+exact staged source under `data/evaluation/step4-20261015/`. Every normalized
+pipeline source hash matches the index. Full commands and the review protocol
+are in [fusion-review.md](fusion-review.md).
+
+Inputs are local `data/bronze`, the frozen Step 2 silver, and the canonical
+Step 3 benchmark outputs. Original data/model zones and AWS resources are
+unchanged; the new run writes only inside its evaluation directory. Raw input
+copies and trained artifacts remain gitignored. A small report and a bounded
+review pack are versioned so teammates can review without rerunning models.
+
+### Fresh real-data results
+
+The input retains **38,449 readings at 14 observed locations**, covering
+1 January–1 February 2026, and produces **995 feature rows**. Layer 1 now
+covers **505 recorded station-days** at 16 requested locations: 353 with
+readings and **152 with none**, made visible by Step 3's manifest union. It
+reports 502 rule incidents and two model incidents. Incident counts are not
+pollution-event counts; multiple rules may mark the same day.
+
+The freshly fitted Layer 2 models produce **175 candidate alerts**. Fusion
+preserves all 175, with **110 escalated and 65 quarantined (37.1%)**. Mean alert
+score is 0.332 and mean trust score is 0.267. By parameter: pm1 has 36 escalated
+and 20 quarantined, PM2.5 has 37 and 23, and um003 has 37 and 22. Rule overlap
+counts are reported separately and must not be added together.
+
+The existing local cached gold holds 320 Layer 2 and fused alerts, while older
+documentation records a 253-alert snapshot. Neither is a paired before/after
+baseline for this isolated rebuild: the older build metadata lacks matching
+source/input provenance. These differences are not evidence that Step 4
+changed detector recall or accuracy. Step 2's corrected temporal/injection
+results remain the separate model-evaluation evidence.
+
+### Controlled policy results
+
+The evaluator supplies candidate alerts to actual Step 3 quality outputs;
+it does not pretend those candidates were detected from injected pollution.
+All **42 policy checks pass**:
+
+- 18/18 faulty-data candidates held for review.
+- 18/18 candidates on healthy control data escalated.
+- 3/3 schema-recovery candidates held because of R8's header transition.
+- An assumed three-station regional event has two candidates escalated and
+  one held because of a coincident quality issue. That hold is a visible
+  limitation of the policy, even though the policy-consistency check passes.
+
+Entirely missing days can yield only Layer 1 findings, so these conditional
+checks do not measure end-to-end event recall. Quarantine also retains rows;
+it is not deletion or a measured false-positive reduction.
+
+### Human review boundary
+
+The fixed decision-blind evidence page contains **20 PM2.5 cases**: ten sampled
+within each status using seed 42, with no shortfall. Each includes exact
+current-day measurements, original units, previous-seven-day hourly context,
+and available same-parameter peers within 50 km. The page excludes fusion
+status, scores, rule IDs, detector votes, and weak labels. The lead retains
+the separate case-to-decision key until independent judgments are submitted.
+
+`pipelines.fusion.review` summarizes two matching review exports. It rejects
+identical reviewer IDs, foreign packs, unknown/duplicate cases, invalid labels,
+and complete judgments without notes. Paired coverage, agreement, uncertainty,
+and disagreement remain explicit. Consensus event/non-event counts and held/
+escalated decisions are sample-only metrics with unavailable empty-denominator
+rates; the balanced sample cannot establish population accuracy.
+
+**Independent human review is pending: zero paired judgments.** Two teammates
+still need about 45–60 minutes each. No reviewer names, labels, agreement,
+real-event retention, or false-alert-reduction results have been invented.
+The technical implementation and automatic measurements are complete; the
+human-evidence part of Step 4 remains open.
+
+### Verification
+
+- Full combined working tree: **167 tests passed**.
+- Exact staged source: **166 tests passed**. The preserved local daylight-saving
+  test explains the one-test difference.
+- Ruff passed for `pipelines dashboard tests glue scripts` in both trees.
+- The staged Glue ZIP imports both new modules from outside the repository.
+- JavaScript syntax and a Node DOM-fixture check pass for rendering data,
+  empty defaults, navigation, draft validation, and review export. The same
+  behavior check also passes against the actual versioned 20-case page.
+- Browser visual QA remains unavailable: the built-in browser could not
+  reach the local preview. No visual-browser pass is claimed. The temporary
+  local preview server was stopped.
+- Existing LOF duplicate-fixture and joblib/NumPy warnings remain; the actual
+  data run also fell back from Windows physical-core discovery to logical
+  cores. All runs completed successfully.
+
+Local JUnit logs are `build/assessment4-step4/tests.xml` and
+`build/assessment4-step4/staged-source-tests.xml`. The unsigned review artifacts
+are under `docs/evaluation/step4-review/`; share only `review.html` with the
+two reviewers until both have submitted.
