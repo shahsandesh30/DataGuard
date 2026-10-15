@@ -24,7 +24,15 @@ negative concentrations, dropouts) without being told they exist?
 single-layer system. A finished one-layer project outperforms two half-built
 layers.
 
-**Status: not yet answered.** Both layers build end to end and both models
-train, but no seeded-failure test exists, so the gate question has not actually
-been put to Layer 1. Writing that test is the top open task — see "Next steps"
-in the top-level README.
+**Status: controlled-fault gate passed, 15 October 2026.** Layer 1 detected
+18/18 synthetic cases covering frozen sensors, negative readings, sensor
+dropout, missing daily files, schema drift, and incorrect unit labels. All
+27 expected rule checks fired. Three additional R8 incidents occurred on
+untouched days when schemas reverted; the healthy baseline had no incidents.
+See the [recorded evidence](evaluation/step3-quality-benchmark.json) and
+[methodology](../models/layer1_model_card.md#controlled-fault-benchmark-15-october-2026).
+
+This answers the narrow constructed-fault question. Three repetitions per
+fault and regular hourly controls do not establish real-world accuracy or a
+false-positive rate. Independent real-alert review and fusion evaluation
+remain open before making broader claims about reliability.

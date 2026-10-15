@@ -29,6 +29,7 @@ from pipelines.config import (
     VARIANCE_EPS,
     load_settings,
 )
+from pipelines.conformance.conform import empty_silver
 from pipelines.conformance.units import CANONICAL_UNITS, canonical_parameter, normalize_unit
 from pipelines.ingestion.fetch import MANIFEST_FILENAME, bronze_key, parse_bronze_filename
 
@@ -210,7 +211,7 @@ def load_bronze_manifest(bronze_root: str | Path) -> pd.DataFrame:
     rows = [json.loads(line) for line in (text or "").splitlines() if line.strip()]
     if not rows:
         return pd.DataFrame(columns=MANIFEST_COLUMNS)
-    frame = pd.DataFrame(rows)
+    frame = pd.DataFrame(rows).reindex(columns=MANIFEST_COLUMNS)
     if "locationid" in frame.columns:
         frame["locationid"] = pd.to_numeric(frame["locationid"], errors="coerce").astype("Int64")
     return frame
@@ -304,13 +305,30 @@ def compute_station_day_metrics(
     bronze_root: str | Path | None = None,
     sensor_metrics: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Return one metric row per (locationid, date_local)."""
-    if conformed is None or conformed.empty:
-        return pd.DataFrame(columns=STATION_DAY_COLUMNS)
+    """Include observed days and manifest-recorded attempts, even without readings.
 
+    Do not invent intervening calendar days: without an ingest attempt or a
+    measurement there is no evidence that a delivery was expected.
+    """
+    if conformed is None or conformed.empty:
+        conformed = empty_silver()
     bronze = bronze_root or load_settings().bronze_root
     detail = sensor_metrics if sensor_metrics is not None else compute_sensor_day_metrics(conformed)
     manifest = load_bronze_manifest(bronze)
+    # Retry attempts describe the same station-day. Ignore incomplete or invalid
+    # keys rather than allowing them into the station-day table.
+    manifest_days = manifest[["locationid", "day"]].rename(columns={"day": "date_local"})
+    manifest_days["date_local"] = pd.to_datetime(
+        manifest_days["date_local"], format="%Y-%m-%d", errors="coerce"
+    ).dt.strftime("%Y-%m-%d")
+    station_days = (
+        pd.concat([conformed[["locationid", "date_local"]], manifest_days], ignore_index=True)
+        .dropna()
+        .drop_duplicates()
+        .sort_values(["locationid", "date_local"])
+    )
+    if station_days.empty:
+        return pd.DataFrame(columns=STATION_DAY_COLUMNS)
     schema_flags = _schema_drift(bronze)
     spreads = _pm25_spread(conformed)
 
@@ -323,32 +341,26 @@ def compute_station_day_metrics(
 
     rows: list[dict] = []
     previous_sensors: dict[int, set[int]] = {}
-    station_days = (
-        conformed[["locationid", "date_local"]]
-        .drop_duplicates()
-        .sort_values(["locationid", "date_local"])
-    )
-
     for _, station in station_days.iterrows():
         locationid = int(station["locationid"])
         date_local = str(station["date_local"])
         key = (locationid, date_local)
 
-        # Empty only if a caller passed in sensor_metrics computed from a
-        # different frame; every aggregate below has to survive it.
+        # Manifest-only days have no sensor rows but still need file rules.
         day_detail = detail[
             (detail["locationid"] == locationid) & (detail["date_local"] == date_local)
         ]
         total_readings = int(day_detail["readings_received"].sum())
         duplicates = int(day_detail["duplicate_count"].sum())
-        missing_rate = float(day_detail["missing_rate"].mean()) if not day_detail.empty else 0.0
+        missing_rate = float(day_detail["missing_rate"].mean()) if not day_detail.empty else 1.0
         stuck_run = int(day_detail["max_stuck_run"].max()) if not day_detail.empty else 0
 
-        # A sensor that reported yesterday and not today has dropped out. Read
-        # before the update, or every station looks like it lost nothing.
+        # Compare with the last observed roster. Keep it through completely
+        # missing days so consecutive outages retain their expected sensors.
         sensors_today = sensors_by_day.get(key, set())
         sensors_yesterday = previous_sensors.get(locationid, set())
-        previous_sensors[locationid] = sensors_today
+        if sensors_today:
+            previous_sensors[locationid] = sensors_today
 
         rows.append(
             {

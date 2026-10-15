@@ -205,24 +205,37 @@ Latest audited local run over the current bronze snapshot:
 |---|---|---|
 | Foundation | Data queryable via Athena | Working, local and S3 |
 | Conformance | Single queryable table | Working |
-| Layer 1 | Detects known failures unprompted | Rules + model working; not yet tested against seeded failures |
+| Layer 1 | Detects known failures unprompted | All 18 controlled fault cases detected; three additional schema-reversion incidents — see [model card](models/layer1_model_card.md#controlled-fault-benchmark-15-october-2026) |
 | Layer 2 | Ranked anomaly output | Working; proxy metrics and corrected temporal/injected-spike benchmarks — see [model card](models/layer2_model_card.md#evaluation) |
 | Fusion | Public dashboard URL | Trust engine working; dashboard runs locally, not deployed |
 | Consolidation | Final report | Not started |
 
 ## Next steps
 
-1. **Seed known failures and measure.** Corrupt a copy of silver on purpose —
-   freeze a sensor, delete a day, mislabel a unit — and check Layer 1 catches
-   each one. Until this exists, "it works" is an assertion, not a result.
-2. **Review Layer 2 and fusion using corrected evidence.** Run the fixed-dataset
-   benchmark, independently review real alerts, and measure what fusion holds
-   for review before choosing another feature or model change. Model artifacts
-   are already saved per run.
+1. **Evaluate fusion and independently review real alerts.** Use the corrected
+   Layer 2 results and the [Layer 1 controlled benchmark](docs/evaluation/step3-quality-benchmark.json)
+   to measure what fusion holds for review. Model artifacts are already saved
+   per run. Synthetic coverage does not establish real-event accuracy.
+2. **Explain one alert in the dashboard.** Show the event evidence, quality
+   incidents, trust penalty, and review status together using existing outputs.
 3. **Run the documented AWS backfill and enable the schedule**, then verify one
    success and one controlled failure alert.
 4. **Deploy the dashboard** from `main`. Add Terraform only after the demo is
    stable; the current manual AWS setup is intentionally small.
+
+The offline Layer 1 benchmark creates its own synthetic bronze, silver, gold,
+and model outputs under a **new, empty local directory**, ignoring operational
+roots in `.env`:
+
+```powershell
+venv\Scripts\python.exe -m pipelines.quality.benchmark --output-root data/evaluation/quality-check
+```
+
+It tests six faults at three station-days each, records expected and observed
+rules, misses, raw model flags, and additional control incidents in
+`quality-benchmark.json`. Reuse requires a new output directory. See the
+[assessment progress](docs/assessment4-progress.md#step-3-missing-days-and-layer-1-fault-benchmark-15-october-2026)
+for the recorded run and limitations.
 
 ### Why R6 is currently disabled
 

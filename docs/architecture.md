@@ -109,5 +109,5 @@ Athena remains available for ad-hoc queries over the registered Glue tables.
 
 | Gap | Consequence |
 |---|---|
-| Layer 1 seeded-failure benchmark remains open | Layer 2 has proxy metrics and corrected offline benchmarks; Layer 1 still needs measured fault coverage |
+| Real-world fault/event labels remain limited | Layer 1 detects 18/18 controlled faults with three schema-reversion control incidents; synthetic coverage and Layer 2 proxies still need independent real-alert review |
 | AWS resources created by hand for the demo | Recreate them with the generated policy/job JSON and deployment runbook; Terraform is deferred |

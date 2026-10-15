@@ -134,3 +134,88 @@ daylight-saving test. Ruff and both Glue ZIP import checks passed. Existing
 LOF and joblib/NumPy warnings remain without test failures. Local JUnit logs
 are `build/assessment4-step2/tests.xml` and
 `build/assessment4-step2/staged-source-tests.xml`.
+
+## Step 3: missing days and Layer 1 fault benchmark (15 October 2026)
+
+Step 3 starts from `a839085` on `sandesh_shahi`. The existing nine tracked
+local edits were captured under `build/assessment4-step3/baseline/` before
+implementation. Unrelated local work remains outside this step's commit.
+
+### Missing-day fix
+
+Layer 1 now builds station-days from silver observations **and bronze manifest
+attempts**. Previously, a completely missing daily file could disappear from
+the metric table before R7 ran. Manifest-only rows now retain zero readings,
+missing rate 1.0, and file checks, even when silver is entirely empty.
+Repeated attempts produce one row; a successful retry recovers when the file
+and rebuilt silver arrive. The last observed sensor roster survives consecutive
+missing days. No unrecorded calendar gaps are invented. Negative/stuck readings
+remain in silver, and R6 remains disabled.
+
+### Reproduce the controlled run
+
+```powershell
+venv\Scripts\python.exe -m pipelines.quality.benchmark `
+  --output-root data/evaluation/step3-quality-rerun
+```
+
+The output root must be a new, empty local directory; the benchmark refuses
+S3 and existing files. Each scenario gets its own bronze, silver, gold, and
+model roots independently of operational `.env` settings. No live archive
+download or AWS write is needed. The generated `quality-benchmark.json` records
+input/source hashes, versions, expected/observed rules, misses, and controls.
+The versioned result is
+[`evaluation/step3-quality-benchmark.json`](evaluation/step3-quality-benchmark.json).
+
+### Results
+
+The baseline has three synthetic stations, 21 local days, two PM2.5 sensors
+per station, and hourly readings: **3,024 readings and 63 station-days**.
+Six separate copies each receive one fault type at three interior station-days.
+
+- Frozen sensor: **3/3**, both R2 and R3.
+- Negative readings: **3/3**, R1.
+- Sensor dropout: **3/3**, R5.
+- Completely missing daily file: **3/3**, R4, R5, and R7.
+- Schema drift: **3/3**, R8.
+- Incorrect unit label: **3/3**, R10.
+
+All **18/18 cases** reached scoring and all **27/27 expected rule checks**
+fired. There were no misses. The healthy baseline had no incidents. There
+were **three additional control incidents in 360 control station-day
+occurrences (0.83%)**: R8 when the original schema returned on the following
+day. These are recorded rather than removed from the denominator.
+
+Isolation Forest trained in every scenario. Its raw flags covered 15/18
+fault targets, with no control flags; all 15 were already caught by rules,
+so it added zero published incidents. These models refit on the perturbed
+data and do not provide a held-out accuracy estimate.
+
+This passes the narrow synthetic-fault gate in the risk register. Regular
+controls, three repetitions, and one parameter/region do not establish
+real-world accuracy or false-positive rates. Step 4 remains fusion evaluation
+and independent review of real alerts.
+
+### Verification
+
+- Full combined working tree: **151 tests passed**.
+- Exact staged source: **150 tests passed**. The difference is the preserved
+  local daylight-saving regression test, excluded from this commit.
+- Ruff passed for `pipelines dashboard tests glue scripts` in both trees.
+- Both Glue source ZIPs imported the pipeline, storage, model store, and new
+  quality benchmark from outside the repository.
+- The exact staged source reproduced every benchmark result. The versioned
+  report is copied from
+  `data/evaluation/step3-20261015-staged/quality-benchmark.json`; every normalized
+  source hash matches the Git index. Initial working-tree results are saved
+  separately under `data/evaluation/step3-20261015/`.
+- Regressions cover consecutive missing days, no silver, duplicate/invalid
+  manifest keys, successful retries, string/Path roots, fake S3, preserved
+  negative values/unit labels, unscored misses, and schema-reversion controls.
+- Eight unrelated tracked files remain byte-identical to the starting copies.
+  The README's original local edits are also preserved outside the commit.
+
+JUnit logs are `build/assessment4-step3/tests.xml` and
+`build/assessment4-step3/staged-source-tests.xml`. Existing LOF duplicate-fixture
+and joblib/NumPy deprecation warnings remain without failures. Operational
+data and AWS resources were not changed.

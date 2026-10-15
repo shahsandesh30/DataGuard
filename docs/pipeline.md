@@ -178,9 +178,21 @@ come from the readings** — this is why bronze is read here:
 | `file_lateness_hours` | `load_bronze_manifest` — the arrival log |
 | `schema_changed` | `_schema_drift` — reads each file's **header row only** |
 
-Plus `sensor_dropout_count`: sensors that reported yesterday and not today.
+The station-day list is the union of observed silver days and valid
+`(locationid, day)` attempts recorded in the bronze manifest. A completely
+missing day therefore still gets a row: zero readings, missing rate 1.0, and
+file-presence checks. Repeated attempts collapse to one row; a later successful
+retry is assessed against the current file and rebuilt silver. No intervening
+calendar days are invented without measurements or a manifest attempt.
 
-→ **353 station-days, 18 columns.**
+`sensor_dropout_count` compares with the previous observed sensor roster.
+That roster survives consecutive completely missing days. Without prior
+observations, the expected sensor count remains unknown (represented as zero);
+the missing-file and completeness rules can still fire.
+
+→ **353 station-days, 18 columns** in the earlier recorded run. The missing-day
+fix can add manifest-only rows when rebuilding; these historical counts are
+not a fresh run of the operational dataset.
 
 ### 3d. `apply_quality_rules` — `rules.py`
 
