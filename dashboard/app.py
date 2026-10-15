@@ -116,7 +116,7 @@ EVALUATION_COLUMNS = [
 # Metrics worth plotting across runs, with the label shown in the picker.
 TREND_METRICS = {
     "weak_label_lift": "Weak-label lift",
-    "precision_at_k": "Precision@3",
+    "precision_at_k": "Weak-label Precision@3",
     "flag_rate": "Flag rate",
     "detector_agreement_mean": "Mean detector agreement",
     "avg_alert_score": "Mean alert score",
@@ -573,7 +573,8 @@ with tab_models:
             "There is no labelled ground truth, so these are proxies. **Lift** compares how "
             "often alerts match the independent weak-label rule with how often any row does: "
             "above 1.0 the alerts beat random selection. **Precision@3** is the weak-label "
-            "share of each region-day's top three alerts."
+            "share of each region-day's top three alerts. Weak-label metrics apply only "
+            "to PM2.5; they are unavailable for other pollutants."
         )
 
         st.subheader("Evaluation trend across runs")
@@ -600,6 +601,11 @@ with tab_models:
             "held-out behaviour and recall on injected spikes."
         )
     else:
+        if benchmark.get("methodology_version", 1) < 2:
+            st.warning(
+                "This benchmark predates the corrected temporal split and spike eligibility "
+                "checks. Rerun the offline evaluation before quoting its results."
+            )
         st.caption(
             f"Built {benchmark.get('built_at_utc', 'unknown')} over "
             f"{benchmark.get('feature_rows', 0)} feature rows."
@@ -635,7 +641,11 @@ with tab_models:
             i1.metric("Recall", _pct(injection.get("recall")))
             i2.metric("Local spikes", _pct(injection.get("recall_local")))
             i3.metric("Regional spikes", _pct(injection.get("recall_regional")))
-            i4.metric("False alarm rate", _pct(injection.get("false_alarm_rate")))
+            i4.metric("Untouched-data alert rate", _pct(injection.get("untouched_alert_rate")))
+            st.caption(
+                "Untouched real readings have no verified normal labels. This alert rate "
+                "does not measure false positives. Spike recall includes the daily top-K cap."
+            )
 
     st.caption(
         "Layer 1 has no labelled evaluation; its model card documents validation against "

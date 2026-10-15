@@ -4,12 +4,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pipelines import storage
 from pipelines.__main__ import main
 from pipelines.detection.benchmark import (
     BENCHMARK_FILE,
+    _dataset_summary,
     inject_spikes,
     injection_recall,
     out_of_sample_votes,
+    temporal_feature_split,
     temporal_holdout,
 )
 from pipelines.detection.ensemble import _feature_matrix, fit_ensemble, tune_dbscan_eps
@@ -20,7 +23,12 @@ from pipelines.detection.evaluation import (
     read_run_history,
     save_run_metrics,
 )
-from pipelines.detection.features import FEATURE_MODEL_COLUMNS, build_event_features
+from pipelines.detection.features import (
+    FEATURE_MODEL_COLUMNS,
+    _add_baseline_deviation,
+    build_event_features,
+    build_hourly_event_features,
+)
 from tests.test_detection import _base_row, _silver_frame
 
 STATIONS = (1544061, 1601414, 2455394, 6430870)
@@ -92,8 +100,10 @@ def test_run_metrics_leave_lift_unknown_without_a_base_rate():
     metrics = compute_run_metrics(
         "pm1", features, alerts, ensemble_trained=True, weak_label=no_labels
     )
-    assert metrics.weak_label_base_rate == 0.0
+    assert metrics.weak_label_base_rate is None
     assert metrics.weak_label_lift is None
+    assert metrics.weak_label_agreement_rate is None
+    assert metrics.precision_at_k is None
 
     unlabelled = compute_run_metrics("pm1", features, alerts, ensemble_trained=True)
     assert unlabelled.weak_label_base_rate is None
@@ -170,22 +180,31 @@ def test_out_of_sample_votes_flag_far_rows_and_accept_training_rows():
         assert not out_of_sample_votes(models, core_row)["dbscan_flag"].iloc[0]
 
 
-def test_temporal_holdout_scores_only_later_dates():
-    features = build_event_features(_noisy_silver(days=16))
-    results = temporal_holdout(features, holdout_fraction=0.25)
+@pytest.mark.parametrize("parameter", ["pm25", "pm1"])
+def test_temporal_holdout_scores_only_later_dates(parameter):
+    silver = _noisy_silver(days=16)
+    silver["parameter"] = parameter
+    results = temporal_holdout(silver, holdout_fraction=0.25)
 
-    assert [r.parameter for r in results] == ["pm25"]
+    assert [r.parameter for r in results] == [parameter]
     result = results[0]
     assert result.holdout_dates == 4
-    assert result.train_rows + result.holdout_rows == len(features)
+    assert result.train_rows + result.holdout_rows == 16 * len(STATIONS)
+    assert result.train_date_max == "2026-01-12"
+    assert result.holdout_date_min == "2026-01-13"
     for rate in (result.train_flag_rate, result.holdout_flag_rate, result.holdout_dbscan_rate):
         assert 0.0 <= rate <= 1.0
     assert result.holdout_weak_label_lift is None  # no weak labels supplied
+    if parameter != "pm25":
+        assert result.holdout_weak_label_precision is None
+        assert result.holdout_weak_label_base_rate is None
 
 
 def test_temporal_holdout_skips_parameters_without_enough_history():
-    features = build_event_features(_noisy_silver(days=5))
-    assert temporal_holdout(features) == []
+    skipped = []
+    assert temporal_holdout(_noisy_silver(days=5), skipped=skipped) == []
+    assert skipped[0]["parameter"] == "pm25"
+    assert skipped[0]["train_rows"] < 20
 
 
 def test_injection_recall_catches_large_local_spikes():
@@ -195,7 +214,9 @@ def test_injection_recall_catches_large_local_spikes():
     assert result.injected_scored == 4
     assert result.recall_regional is None
     assert result.recall is not None and result.recall >= 0.75
-    assert result.recall > result.false_alarm_rate
+    assert result.recall > result.untouched_alert_rate
+    assert result.scored_by_kind == {"local": 4, "regional": 0}
+    assert result.skipped["unscored"] == 0
 
 
 def test_evaluate_command_writes_benchmark_report(tmp_path, monkeypatch):
@@ -210,6 +231,13 @@ def test_evaluate_command_writes_benchmark_report(tmp_path, monkeypatch):
     assert report["input_measurement_rows"] == len(silver)
     assert report["holdout"][0]["parameter"] == "pm25"
     assert report["injection"]["parameter"] == "pm25"
+    assert report["methodology_version"] == 2
+    assert report["configuration"]["minimum_prior_observed_days"] == 7
+    assert len(report["dataset"]["sha256"]) == 64
+    assert report["dataset"]["rows"] == len(silver)
+    assert "untouched_alert_rate" in report["injection"]
+    assert "false_alarm_rate" not in report["injection"]
+    assert "holdout_skipped" in report
 
 
 def test_tuned_dbscan_noise_stays_within_contamination():
@@ -223,3 +251,126 @@ def test_tuned_dbscan_noise_stays_within_contamination():
 
 def test_tune_dbscan_eps_handles_identical_rows():
     assert tune_dbscan_eps(np.zeros((10, 3)), min_samples=3, contamination=0.1) > 0
+
+
+def test_hourly_reference_statistics_use_only_training_readings():
+    readings = pd.DataFrame({
+        "locationid": [1544061] * 20,
+        "parameter": ["pm25"] * 20,
+        "hour": [12] * 20,
+        "is_weekend": [False] * 20,
+        "season": [1] * 20,
+        "value": np.arange(20, dtype=float),
+    })
+    frozen = _add_baseline_deviation(readings, reference=readings.iloc[:15])
+    assert frozen["baseline_median"].eq(7.0).all()
+    assert frozen["baseline_n"].eq(15).all()
+
+
+def test_future_readings_cannot_change_temporal_training_features():
+    silver = _noisy_silver(days=16)
+    cutoff = "2026-01-13"
+    train, holdout = temporal_feature_split(silver, cutoff)
+    changed = silver.copy()
+    changed.loc[changed["date_local"] >= cutoff, "value"] += 1_000
+    changed_train, changed_holdout = temporal_feature_split(changed, cutoff)
+
+    pd.testing.assert_frame_equal(train, changed_train)
+    assert (train["date_local"] < cutoff).all()
+    assert (holdout["date_local"] >= cutoff).all()
+    assert changed_holdout["hourly_deviation_zscore_max"].max() > (
+        holdout["hourly_deviation_zscore_max"].max() + 100
+    )
+
+
+@pytest.mark.parametrize("case", ["short_history", "missing_hours", "nonfinite_values"])
+def test_spike_truth_excludes_cases_without_real_eligible_changes(case):
+    silver = _noisy_silver(days=5 if case == "short_history" else 14)
+    in_window = silver["datetime_local"].dt.hour.between(10, 17)
+    if case == "missing_hours":
+        silver = silver[~in_window].copy()
+    elif case == "nonfinite_values":
+        silver.loc[in_window, "value"] = np.nan
+    original = silver.copy()
+    injected, truth = inject_spikes(silver)
+
+    pd.testing.assert_frame_equal(injected, original)
+    assert truth.empty
+    reason = "insufficient_history" if case == "short_history" else "no_window_readings"
+    assert truth.attrs["skipped"][reason] > 0
+
+
+def test_regional_injection_requires_multiple_eligible_stations():
+    silver = _noisy_silver()
+    silver = silver[silver["locationid"] == STATIONS[0]]
+    injected, truth = inject_spikes(silver, n_local=0, n_regional=1)
+    assert truth.empty
+    assert truth.attrs["skipped"]["regional_date_shortfall"] == 1
+    pd.testing.assert_frame_equal(injected, silver)
+
+
+@pytest.mark.parametrize("parameter", ["pm1", "um003"])
+def test_unsupported_pollutant_weak_metrics_are_unavailable(parameter):
+    metrics = compute_run_metrics(
+        parameter, _features(4, parameter), _alerts([1], [True]),
+        ensemble_trained=True, weak_label=pd.Series([True] * 4),
+    )
+    assert metrics.weak_label_agreement_rate is None
+    assert metrics.weak_label_base_rate is None
+    assert metrics.weak_label_lift is None
+    assert metrics.precision_at_k is None
+
+
+def test_pm25_zero_weak_label_base_rate_is_still_a_measured_zero():
+    metrics = compute_run_metrics(
+        "pm25", _features(4), _alerts([1], [False]),
+        ensemble_trained=True, weak_label=pd.Series([False] * 4),
+    )
+    assert metrics.weak_label_base_rate == 0.0
+    assert metrics.precision_at_k == 0.0
+    assert metrics.weak_label_lift is None
+
+
+def test_legacy_unsupported_run_metrics_are_masked_without_rewriting(tmp_path):
+    legacy = pd.DataFrame([{
+        "parameter": "pm1", "run_at": "2026-01-01T00:00:00+00:00",
+        "weak_label_agreement_rate": 0.0, "weak_label_base_rate": 0.0,
+        "weak_label_lift": 0.0, "precision_at_k": 0.0,
+    }])
+    layer2 = tmp_path / "gold" / "layer2"
+    storage.write_model_parquet(legacy, layer2)
+    loaded = read_run_history(tmp_path / "gold")
+    for column in ("weak_label_agreement_rate", "weak_label_base_rate",
+                   "weak_label_lift", "precision_at_k"):
+        assert pd.isna(loaded.iloc[0][column])
+    assert storage.read_parquet(layer2, "model_runs").iloc[0]["precision_at_k"] == 0.0
+
+
+def test_dataset_fingerprint_is_order_independent_and_sensitive_to_readings():
+    silver = _noisy_silver(days=1)
+    fingerprint = _dataset_summary(silver)["sha256"]
+    shuffled = silver.sample(frac=1, random_state=42).reset_index(drop=True)
+    assert _dataset_summary(shuffled)["sha256"] == fingerprint
+    shuffled.loc[0, "value"] += 1.0
+    assert _dataset_summary(shuffled)["sha256"] != fingerprint
+
+
+def test_hourly_reference_excludes_stations_without_training_history():
+    silver = _noisy_silver(days=5)
+    reference = silver[silver["locationid"] == STATIONS[0]]
+    hourly = build_hourly_event_features(silver, baseline_reference=reference)
+    assert set(hourly["locationid"]) == {STATIONS[0]}
+    assert len(hourly) == len(reference)
+
+
+def test_saved_unavailable_metrics_keep_numeric_parquet_columns(tmp_path):
+    metrics = compute_run_metrics(
+        "um003", _features(4, "um003"), _alerts([1], [False]), ensemble_trained=True,
+    )
+    layer2 = tmp_path / "layer2"
+    save_run_metrics(metrics, layer2)
+    stored = storage.read_parquet(layer2, "model_runs")
+    for column in ("weak_label_agreement_rate", "weak_label_base_rate",
+                   "weak_label_lift", "precision_at_k"):
+        assert pd.api.types.is_float_dtype(stored[column])
+        assert stored[column].isna().all()

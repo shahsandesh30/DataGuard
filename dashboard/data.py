@@ -307,6 +307,16 @@ def load_benchmark(gold_root: str | Path | None = None) -> dict | None:
     if not text:
         return None
     try:
-        return json.loads(text)
+        report = json.loads(text)
     except json.JSONDecodeError:
         return None
+    if not isinstance(report, dict):
+        return None
+    injection = report.get("injection")
+    if (
+        isinstance(injection, dict)
+        and "untouched_alert_rate" not in injection
+        and "false_alarm_rate" in injection
+    ):
+        injection["untouched_alert_rate"] = injection["false_alarm_rate"]
+    return report

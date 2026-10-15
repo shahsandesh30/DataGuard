@@ -203,3 +203,22 @@ def test_load_benchmark_reads_the_evaluate_report(tmp_path):
     )
     assert load_benchmark(gold)["built_at_utc"] == "2026-01-08T00:00:00+00:00"
 
+
+def test_load_benchmark_maps_legacy_untouched_rate_without_rewriting(tmp_path):
+    path = storage.join(tmp_path, "layer2/_detection_benchmark.json")
+    original = json.dumps({"injection": {"false_alarm_rate": 0.2}})
+    storage.write_text(path, original)
+
+    report = load_benchmark(tmp_path)
+    assert report["injection"]["untouched_alert_rate"] == 0.2
+    assert storage.read_text(path) == original
+
+
+def test_load_benchmark_prefers_corrected_metric_when_both_keys_exist(tmp_path):
+    path = storage.join(tmp_path, "layer2/_detection_benchmark.json")
+    storage.write_text(path, json.dumps({
+        "methodology_version": 2,
+        "injection": {"untouched_alert_rate": 0.15, "false_alarm_rate": 0.9},
+    }))
+    assert load_benchmark(tmp_path)["injection"]["untouched_alert_rate"] == 0.15
+

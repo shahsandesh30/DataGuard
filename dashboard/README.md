@@ -34,6 +34,9 @@ Views:
   (`gold/layer2/model_runs`), and the offline benchmark written by
   `python -m pipelines evaluate`. Everything comes from gold, so the read-only
   dashboard role needs no access to `models/`; model files are never loaded.
+  Weak-label metrics apply to PM2.5 only. Legacy benchmark reports remain
+  readable with a rerun warning; untouched-data alert rate is not labelled as
+  a measured false-alarm rate.
 
 `dashboard/data.py` holds the loading and join logic and is unit tested;
 `app.py` is layout only.

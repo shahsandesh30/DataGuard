@@ -27,6 +27,9 @@ MODEL_RUNS_DATASET = "model_runs"
 # Precision@K looks at the top K ranked alerts of each region-day — the rows a
 # reviewer actually reads first.
 PRECISION_AT_K = 3
+WEAK_LABEL_METRIC_COLUMNS = [
+    "weak_label_agreement_rate", "weak_label_base_rate", "weak_label_lift", "precision_at_k"
+]
 
 RUN_METRIC_COLUMNS = [
     "parameter",
@@ -81,7 +84,9 @@ def compute_run_metrics(
     group internally, so it stays usable whichever way the caller slices.
 
     ``weak_label`` is the label series for ``features`` (same index). Without
-    it the base rate and lift are unknown and recorded as None.
+    it the base rate and lift are unknown and recorded as None. The project's
+    weak-label heuristic covers PM2.5 only; other parameters record None for
+    every weak-label metric, including Precision@K.
     """
     run_at = run_at or datetime.now(UTC).isoformat()
     feature_rows = int(len(features))
@@ -93,14 +98,14 @@ def compute_run_metrics(
     # external corroboration rather than the model grading its own output.
     weak_label_agreement_rate = (
         float(alerts["weak_label"].mean()) 
-        if alert_rows and "weak_label" in alerts else None
+        if parameter == "pm25" and alert_rows and "weak_label" in alerts else None
     )
     # The agreement rate alone means little: if every day is weak-labelled, any
     # model scores 100%. Lift compares it with the share of *all* scored rows
     # that carry a weak label; above 1.0 the alerts beat random selection.
     weak_label_base_rate = (
         float(weak_label.reindex(features.index, fill_value=False).astype(bool).mean())
-        if weak_label is not None and feature_rows else None
+        if parameter == "pm25" and weak_label is not None and feature_rows else None
     )
     weak_label_lift = (
         weak_label_agreement_rate / weak_label_base_rate
@@ -108,7 +113,7 @@ def compute_run_metrics(
         else None
     )
     precision_at_k = None
-    if alert_rows and {"rank", "weak_label"}.issubset(alerts.columns):
+    if parameter == "pm25" and alert_rows and {"rank", "weak_label"}.issubset(alerts.columns):
         top = alerts[pd.to_numeric(alerts["rank"], errors="coerce") <= k]
         precision_at_k = float(top["weak_label"].astype(bool).mean()) if len(top) else None
 
@@ -140,6 +145,12 @@ def compute_run_metrics(
 def save_run_metrics(metrics: RunMetrics, gold_root: str | None = None) -> str:
     """Append one run's metrics to the model_runs dataset (never overwritten)."""
     frame = pd.DataFrame([metrics.to_row()])
+    # Nullable floats preserve the Parquet/Glue numeric schema even when a
+    # parameter has no applicable weak labels and every value is unavailable.
+    for column in [
+        *WEAK_LABEL_METRIC_COLUMNS, "flag_rate", "detector_agreement_mean", "avg_alert_score"
+    ]:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce").astype("Float64")
     path = storage.write_model_parquet(frame, gold_root, MODEL_RUNS_DATASET)
     logger.info("Saved Layer 2 run metrics for %s -> %s", metrics.parameter, path)
     return path
@@ -173,6 +184,13 @@ def read_run_history(gold_root: str | None = None, parameter: str | None = None)
     history = storage.read_parquet(gold, MODEL_RUNS_DATASET)
     if history.empty:
         return history
+    # Older runs wrote zero rather than unavailable for unsupported pollutants.
+    # Mask those values on read without rewriting the saved history.
+    if "parameter" in history.columns:
+        unsupported = history["parameter"].astype(str) != "pm25"
+        for column in WEAK_LABEL_METRIC_COLUMNS:
+            if column in history.columns:
+                history.loc[unsupported, column] = None
     if parameter is not None and "parameter" in history.columns:
         history = history[history["parameter"] == parameter]
     if "run_at" in history.columns:

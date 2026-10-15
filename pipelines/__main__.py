@@ -206,11 +206,11 @@ def _evaluate(args: argparse.Namespace) -> int:
         )
     injection = report["injection"]
     logging.info(
-        "Injection %s: recall %s over %s spikes, false alarm rate %s",
+        "Injection %s: recall %s over %s spikes, untouched-data alert rate %s",
         injection["parameter"],
         injection["recall"],
         injection["injected_scored"],
-        injection["false_alarm_rate"],
+        injection["untouched_alert_rate"],
     )
     return 0
 
