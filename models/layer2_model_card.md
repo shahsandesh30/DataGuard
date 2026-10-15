@@ -48,6 +48,9 @@ Parameters: `pm25`, `um003`, `pm1`. Regional bucket: `sydney_metro`.
 
 - **Algorithms:** `IsolationForest`, `LocalOutlierFactor`, `DBSCAN`
 - **Preprocessing:** `StandardScaler` on numeric feature columns
+- **Artifact:** one fitted ensemble per parameter at
+  `<MODELS_ROOT>/layer2/ensemble_<parameter>.joblib`, plus a copy per run under
+  `layer2/history/run=<UTC timestamp>/` (default root `models/`, gitignored)
 - **DBSCAN `eps`:** tuned per fit by `tune_dbscan_eps`. It is the
   `1 − contamination` quantile of each row's distance to its `min_samples`-th
   neighbour, so at most `contamination` (10%) of training rows can be noise,

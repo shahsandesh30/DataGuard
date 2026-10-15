@@ -25,5 +25,8 @@ def test_rendered_aws_config_is_scoped_and_single_concurrency(tmp_path):
         for action in statement["Action"]
     }
     assert "glue:BatchCreatePartition" in glue_actions
+    assert job["DefaultArguments"]["--models-root"] == "s3://dataguard-demo/models"
+    assert "arn:aws:s3:::dataguard-demo/models/*" in json.dumps(glue_policy)
+    assert "models/*" not in json.dumps(dashboard)
     assert "s3:PutObject" not in json.dumps(dashboard)
     assert "arn:aws:s3:::dataguard-demo/gold/*" in json.dumps(dashboard)

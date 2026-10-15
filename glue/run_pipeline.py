@@ -79,6 +79,7 @@ def build_pipeline_argv(
     bronze_root: str | None = None,
     silver_root: str | None = None,
     gold_root: str | None = None,
+    models_root: str | None = None,
 ) -> list[str]:
     """Build the argv for ``python -m pipelines run``.
 
@@ -92,6 +93,7 @@ def build_pipeline_argv(
         ("--bronze-root", bronze_root),
         ("--silver-root", silver_root),
         ("--gold-root", gold_root),
+        ("--models-root", models_root),
     ):
         if value:
             argv += [flag, value]
@@ -115,6 +117,7 @@ def _parse_args(argv: list[str] | None) -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--bronze-root", default=None)
     parser.add_argument("--silver-root", default=None)
     parser.add_argument("--gold-root", default=None)
+    parser.add_argument("--models-root", default=None)
     parser.add_argument("--glue-database", default="dataguard")
 
     # Glue injects its own arguments (--JOB_NAME and friends). parse_known_args
@@ -168,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
                 bronze_root=args.bronze_root,
                 silver_root=args.silver_root,
                 gold_root=args.gold_root,
+                models_root=args.models_root,
             )
         )
     finally:

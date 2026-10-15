@@ -1,8 +1,9 @@
-"""Dashboard data loaders: station geography joined to Layer 1 / fusion status."""
+"""Dashboard data loaders: station geography, Layer 1 / fusion status, model runs."""
 
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -11,7 +12,9 @@ import pandas as pd
 from pipelines import storage
 from pipelines.config import load_settings
 from pipelines.conformance.conform import read_silver
+from pipelines.detection.benchmark import BENCHMARK_FILE
 from pipelines.detection.build import read_event_alerts
+from pipelines.detection.evaluation import RUN_METRIC_COLUMNS, read_run_history
 from pipelines.fusion.build import read_trust_alerts
 from pipelines.quality.build import read_quality_incidents, read_quality_metrics
 
@@ -210,3 +213,100 @@ def build_station_status(
 
     order = result["status"].map(STATUS_PRIORITY).fillna(99)
     return result.assign(_order=order).sort_values(["_order", "locationid"]).drop(columns="_order")
+
+
+# --------------------------------------------------------------------------- #
+# Models
+# --------------------------------------------------------------------------- #
+
+MODEL_COLUMNS = ["layer", "model", "trained", "run_id", "built_at_utc", "model_path"]
+
+# The run id is the history folder model_store writes each fit into.
+_RUN_ID = re.compile(r"run=([^/\\]+)")
+
+
+def _run_id(model_path: str | None) -> str:
+    match = _RUN_ID.search(model_path or "")
+    return match.group(1) if match else ""
+
+
+def last_run_models(summaries: dict[str, dict]) -> pd.DataFrame:
+    """One row per model the latest Layer 1 and Layer 2 builds trained or skipped.
+
+    Read from the build summaries rather than the model store: the summaries
+    live in gold, which the dashboard may read, and they say which models a
+    build *skipped* for lack of history, which a model listing cannot.
+    """
+    rows = []
+    layer1 = summaries.get("layer1")
+    if layer1:
+        rows.append(
+            {
+                "layer": "Layer 1",
+                "model": "isolation_forest",
+                "trained": bool(layer1.get("model_trained")),
+                "run_id": _run_id(layer1.get("model_path")),
+                "built_at_utc": layer1.get("built_at_utc", ""),
+                "model_path": layer1.get("model_path") or "",
+            }
+        )
+    layer2 = summaries.get("layer2")
+    if layer2:
+        paths = layer2.get("model_paths") or {}
+        for parameter in [
+            *layer2.get("parameters_trained", []),
+            *layer2.get("parameters_skipped", []),
+        ]:
+            path = paths.get(parameter)
+            rows.append(
+                {
+                    "layer": "Layer 2",
+                    "model": f"ensemble_{parameter}",
+                    "trained": parameter in layer2.get("parameters_trained", []),
+                    "run_id": _run_id(path),
+                    "built_at_utc": layer2.get("built_at_utc", ""),
+                    "model_path": path or "",
+                }
+            )
+    return pd.DataFrame(rows, columns=MODEL_COLUMNS)
+
+
+def load_model_runs(gold_root: str | Path | None = None) -> pd.DataFrame:
+    """Layer 2 per-run evaluation history, oldest first, with a parsed timestamp."""
+    history = read_run_history(gold_root)
+    if history.empty or "run_at" not in history.columns:
+        return history
+    history = history.copy()
+    history["parameter"] = history["parameter"].astype(str)
+    history["run_at"] = pd.to_datetime(history["run_at"], utc=True, errors="coerce")
+    # A metric that was undefined for a run (no alerts, no weak labels) is stored
+    # as null; coerce so object columns of Nones still chart as numbers.
+    for column in set(RUN_METRIC_COLUMNS) - {"parameter", "run_at", "ensemble_trained"}:
+        if column in history.columns:
+            history[column] = pd.to_numeric(history[column], errors="coerce")
+    return history.dropna(subset=["run_at"]).sort_values("run_at").reset_index(drop=True)
+
+
+def latest_model_runs(history: pd.DataFrame) -> pd.DataFrame:
+    """The most recent evaluation row for each parameter."""
+    if history.empty or "parameter" not in history.columns:
+        return history
+    return (
+        history.sort_values("run_at")
+        .groupby("parameter", sort=True)
+        .tail(1)
+        .sort_values("parameter")
+        .reset_index(drop=True)
+    )
+
+
+def load_benchmark(gold_root: str | Path | None = None) -> dict | None:
+    """The offline Layer 2 benchmark report, or ``None`` if never run."""
+    gold = gold_root or load_settings().gold_root
+    text = storage.read_text(storage.join(gold, "layer2", BENCHMARK_FILE))
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None

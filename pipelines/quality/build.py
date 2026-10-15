@@ -13,14 +13,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from pipelines import storage
+from pipelines import model_store, storage
 from pipelines.build_metadata import build_summary_json
 from pipelines.config import MIN_STATION_DAYS, load_settings
 from pipelines.conformance.conform import read_silver
 from pipelines.quality.detector import (
+    MODEL_NAME,
     fit_quality_model,
     model_incidents,
-    save_quality_model,
     score_quality,
 )
 from pipelines.quality.metrics import compute_sensor_day_metrics, compute_station_day_metrics
@@ -36,6 +36,7 @@ class QualityBuildResult:
     model_incidents: int
     model_trained: bool
     output_path: str
+    model_path: str | None = None  # this run's saved Isolation Forest, if trained
 
 
 def read_quality_metrics(gold_root: str | Path | None = None) -> pd.DataFrame:
@@ -74,7 +75,7 @@ def build_quality(
     bronze_root: str | Path | None = None,
     gold_root: str | Path | None = None,
     *,
-    models_dir: Path | None = None,
+    models_root: str | Path | None = None,
 ) -> QualityBuildResult:
     """Compute Layer 1 metrics and incidents, write them to gold."""
     settings = load_settings()
@@ -87,6 +88,7 @@ def build_quality(
     rule_incidents = apply_quality_rules(station_metrics)
 
     artifact = fit_quality_model(station_metrics)
+    model_path = None
     if artifact is None:
         ml_incidents = pd.DataFrame(columns=rule_incidents.columns)
         logger.info(
@@ -94,7 +96,13 @@ def build_quality(
             MIN_STATION_DAYS,
         )
     else:
-        save_quality_model(artifact, models_dir)
+        model_path = model_store.save_model(
+            artifact,
+            "layer1",
+            MODEL_NAME,
+            run_id=model_store.new_run_id(),
+            models_root=models_root,
+        )
         station_metrics = score_quality(artifact, station_metrics)
         ml_incidents = _drop_duplicate_of_rules(
             model_incidents(station_metrics), rule_incidents
@@ -115,6 +123,7 @@ def build_quality(
         model_incidents=int(len(ml_incidents)),
         model_trained=artifact is not None,
         output_path=storage.normalize(gold),
+        model_path=model_path,
     )
     storage.write_text(
         storage.join(gold, "_build.json"),

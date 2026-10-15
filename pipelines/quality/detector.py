@@ -6,9 +6,6 @@ location has enough history (MIN_STATION_DAYS); otherwise rules-only.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import joblib
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
@@ -17,7 +14,7 @@ from pipelines.config import MIN_STATION_DAYS
 from pipelines.quality.metrics import METRIC_COLUMNS
 from pipelines.quality.rules import INCIDENT_COLUMNS
 
-MODEL_FILENAME = "layer1_isolation_forest.joblib"
+MODEL_NAME = "isolation_forest"  # saved under <MODELS_ROOT>/layer1/
 FEATURE_COLUMNS = METRIC_COLUMNS
 
 
@@ -53,15 +50,6 @@ def fit_quality_model(
     )
     model.fit(scaled)
     return {"model": model, "scaler": scaler, "feature_columns": FEATURE_COLUMNS}
-
-
-def save_quality_model(artifact: dict, models_dir: Path | None = None) -> Path:
-    root = Path(models_dir or "models")
-    root.mkdir(parents=True, exist_ok=True)
-    path = root / MODEL_FILENAME
-    joblib.dump(artifact, path)
-    return path
-
 
 
 def score_quality(model_artifact: dict | None, metrics: pd.DataFrame) -> pd.DataFrame:

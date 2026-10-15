@@ -138,8 +138,8 @@ def read_csv(uri: str | Path, **kwargs) -> pd.DataFrame:
     return pd.read_csv(target, compression=compression, encoding="utf-8", **kwargs)
 
 
-def read_text(uri: str | Path) -> str | None:
-    """Read a small text file, or ``None`` when it does not exist."""
+def read_bytes(uri: str | Path) -> bytes | None:
+    """Read a small binary file, or ``None`` when it does not exist."""
     target = normalize(uri)
     if is_s3(target):
         if not exists(target):
@@ -147,24 +147,34 @@ def read_text(uri: str | Path) -> str | None:
         bucket, key = _bucket_and_key(target)
         import boto3
 
-        body = boto3.client("s3").get_object(Bucket=bucket, Key=key)["Body"].read()
-        return body.decode("utf-8")
+        return boto3.client("s3").get_object(Bucket=bucket, Key=key)["Body"].read()
     path = Path(target)
-    return path.read_text(encoding="utf-8") if path.exists() else None
+    return path.read_bytes() if path.exists() else None
 
 
-def write_text(uri: str | Path, text: str) -> None:
-    """Write a small text file, replacing any existing one."""
+def write_bytes(uri: str | Path, data: bytes) -> None:
+    """Write a small binary file, replacing any existing one."""
     target = normalize(uri)
     if is_s3(target):
         bucket, key = _bucket_and_key(target)
         import boto3
 
-        boto3.client("s3").put_object(Bucket=bucket, Key=key, Body=text.encode("utf-8"))
+        boto3.client("s3").put_object(Bucket=bucket, Key=key, Body=data)
         return
     path = Path(target)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    path.write_bytes(data)
+
+
+def read_text(uri: str | Path) -> str | None:
+    """Read a small text file, or ``None`` when it does not exist."""
+    data = read_bytes(uri)
+    return None if data is None else data.decode("utf-8")
+
+
+def write_text(uri: str | Path, text: str) -> None:
+    """Write a small text file, replacing any existing one."""
+    write_bytes(uri, text.encode("utf-8"))
 
 
 def append_text(uri: str | Path, line: str) -> None:

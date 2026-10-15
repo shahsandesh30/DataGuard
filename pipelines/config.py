@@ -122,6 +122,10 @@ class Settings:
     silver_root: str = _zone("SILVER_ROOT", "silver")
     gold_root: str = _zone("GOLD_ROOT", "gold")
 
+    # Trained model artifacts. Not a data zone, so it does not follow DATA_ROOT:
+    # locally it defaults to the repo's models/ directory beside the model cards.
+    models_root: str = _env("MODELS_ROOT", "models")
+
     # Used when a zone is on S3 and storage registers Parquet in Glue.
     glue_database: str = _env("GLUE_DATABASE", "dataguard")
 

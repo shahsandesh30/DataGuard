@@ -55,7 +55,7 @@ def test_bronze_reaches_gold_through_silver(tmp_path):
 
     build_silver(bronze_root=bronze, silver_root=silver)
     result = build_quality(
-        silver_root=silver, bronze_root=bronze, gold_root=gold, models_dir=tmp_path / "models"
+        silver_root=silver, bronze_root=bronze, gold_root=gold, models_root=tmp_path / "models"
     )
 
     assert result.station_day_rows == 2
@@ -87,7 +87,7 @@ def test_stages_accept_string_roots(tmp_path):
     assert (Path(silver) / "_build.json").exists()
 
     result = build_quality(
-        silver_root=silver, bronze_root=bronze, gold_root=gold, models_dir=tmp_path / "models"
+        silver_root=silver, bronze_root=bronze, gold_root=gold, models_root=tmp_path / "models"
     )
     assert result.station_day_rows == 1
     assert (Path(gold) / "layer1" / "_build.json").exists()
@@ -112,7 +112,7 @@ def test_quality_without_silver_produces_empty_gold(tmp_path):
         silver_root=tmp_path / "silver",
         bronze_root=tmp_path / "bronze",
         gold_root=tmp_path / "gold",
-        models_dir=tmp_path / "models",
+        models_root=tmp_path / "models",
     )
     assert result.station_day_rows == 0
     assert result.rule_incidents == 0
