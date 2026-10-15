@@ -326,3 +326,80 @@ Local JUnit logs are `build/assessment4-step4/tests.xml` and
 `build/assessment4-step4/staged-source-tests.xml`. The unsigned review artifacts
 are under `docs/evaluation/step4-review/`; share only `review.html` with the
 two reviewers until both have submitted.
+
+## Step 5: explain one saved alert (15 October 2026)
+
+Step 5 starts from `43c9de5`. The dashboard's **Trust-scored alerts** tab now
+has an **Explain one alert** view above the aggregate charts. Select a
+station, local day, and pollutant within the current sidebar date scope.
+Selections reset when their available options change, including after a date
+filter or data refresh. Quarantined alerts remain selectable, and a date with
+only Layer 1 findings has an explicit empty-state message.
+
+### Evidence and interpretation
+
+- Show the saved status, original anomaly score, maximum-severity policy
+  penalty, stored trust score, and calculation when it can be verified.
+  Penalties do not stack and scores are not probabilities.
+- Show each recorded detector vote and selected feature values. These explain
+  which models voted and provide measurement context, not causal model
+  attribution. The legacy daily sustained-elevation feature counts consecutive
+  readings; its label does not claim measured elapsed hours.
+- Join supporting incidents on station and local day across pollutants. Show
+  readable rule findings, severity, source, and available metric evidence.
+  Missing-file findings retain the archive-name/local-day-boundary caveat.
+- Plot only the selected alert's silver readings, separating sensors and units.
+  Preserve negative and constant values, UTC/local timestamps, and original
+  units in the exact-readings table and JSON evidence download.
+- Warn about missing or conflicting incidents, snapshots, scores, and detector
+  votes, and about detector builds newer than fusion. Saved decisions remain
+  unchanged. Build timestamps alone cannot establish that arbitrary silver and
+  gold roots belong to one run; use the coherent Step 4 snapshot for the demo.
+- Show human review as **Not recorded in this dataset**. There is no human
+  review field in gold, and this view creates no reviewer labels or decisions.
+  The independent two-person Step 4 review remains pending. Reviewers should
+  use only the blind review page until both have submitted.
+
+Silver is read once inside the existing cache and reused for station geography
+and alert evidence. No model files, extra services, dependencies, detector fits,
+pipeline writes, or AWS deployments are required. Existing health, map, model,
+and aggregate alert views remain available; the selected station's full alert
+history is retained in an expander. The
+[dashboard guide](../dashboard/README.md#explain-one-alert) documents usage and
+the explicit local roots for the frozen demonstration.
+
+### Saved-data check
+
+The [measured report](evaluation/step5-dashboard-check.json) uses the exact
+staged dashboard/test source and Step 4's frozen silver and independently
+rebuilt gold. All **175 alerts** are explainable: **110 escalated and 65
+quarantined**. Every alert has a verified trust calculation, matching quality
+context, three available detector votes, saved features, matching measurements,
+and a strict JSON serialization. No missing/conflicting-evidence warnings
+occurred for that coherent snapshot.
+
+The check also renders one actual escalated case and one actual quarantined
+case using Streamlit AppTest. Both display the saved calculation and evidence
+download without exceptions. AWS access and storage writes are blocked during
+this check; all 108 source data/metadata files remain byte-identical. Normalized
+source hashes, input manifest fingerprint, and build times are in the report.
+This verifies evidence consistency and widget behavior, not event accuracy or
+human-review outcomes. AppTest does not verify browser layout; no browser
+visual QA pass is claimed.
+
+### Verification
+
+- Full combined working tree: **181 tests passed**.
+- Exact staged source: **180 tests passed**. The preserved unrelated local
+  daylight-saving test explains the one-test difference.
+- Ruff passed for `pipelines dashboard tests glue scripts` in both trees.
+- The staged Glue ZIP imports the pipeline modules from outside the repository.
+- Fourteen new tests cover exact station/day/pollutant matching, cross-pollutant
+  quality context, highest-severity scoring, malformed or missing evidence,
+  nullable votes, stale builds, JSON export, reused silver reads, read-only
+  public mode, and native Streamlit selection reruns.
+
+Local JUnit logs are `build/assessment4-step5/working-tree-tests.xml` and
+`build/assessment4-step5/staged-source-tests.xml`. Existing unrelated edits and
+raw evaluation/model artifacts are excluded from the Step 5 commit. Step 4's
+independent human review is still open.

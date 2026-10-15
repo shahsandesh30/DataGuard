@@ -217,11 +217,9 @@ Latest audited local run over the current bronze snapshot:
    [review guide](docs/fusion-review.md); the automated fusion run preserves all
    175 candidates, escalating 110 and holding 65. This quarantine count does
    not establish false-alert reduction or real-event accuracy.
-2. **Explain one alert in the dashboard.** Show the event evidence, quality
-   incidents, trust penalty, and review status together using existing outputs.
-3. **Run the documented AWS backfill and enable the schedule**, then verify one
+2. **Run the documented AWS backfill and enable the schedule**, then verify one
    success and one controlled failure alert.
-4. **Deploy the dashboard** from `main`. Add Terraform only after the demo is
+3. **Deploy the dashboard** from `main`. Add Terraform only after the demo is
    stable; the current manual AWS setup is intentionally small.
 
 The offline Layer 1 benchmark creates its own synthetic bronze, silver, gold,
@@ -242,6 +240,12 @@ The [offline fusion evaluation](docs/fusion-review.md) freezes local inputs,
 rebuilds both layers independently, checks candidate preservation and policy
 behavior, and generates the two-person review pack. Its results use a fresh
 isolated build; the older pipeline counts above are historical snapshots.
+
+The dashboard's **Explain one alert** view now brings together saved detector
+votes, feature values, readings, station-day quality incidents, and the trust
+penalty. Quarantined alerts remain visible and human review is explicitly
+unrecorded. See the [dashboard guide](dashboard/README.md#explain-one-alert)
+for local launch instructions and evidence downloads.
 
 ### Why R6 is currently disabled
 
