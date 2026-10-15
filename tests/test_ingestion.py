@@ -4,12 +4,14 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import boto3
+import pytest
 from botocore.exceptions import ClientError
 
 from pipelines import storage
 from pipelines.ingestion.fetch import (
     archive_key,
     bronze_key,
+    download_archive_object,
     fetch_location_day,
     fetch_range,
     parse_bronze_filename,
@@ -19,8 +21,7 @@ from pipelines.ingestion.fetch import (
 def test_archive_key_matches_openaq_layout():
     key = archive_key(2178, date(2023, 1, 5))
     assert key == (
-        "records/csv.gz/locationid=2178/year=2023/month=01/"
-        "location-2178-20230105.csv.gz"
+        "records/csv.gz/locationid=2178/year=2023/month=01/location-2178-20230105.csv.gz"
     )
 
 
@@ -148,9 +149,7 @@ def test_second_fetch_skips_an_object_already_in_the_zone(monkeypatch):
     def explode(*_args):
         raise AssertionError("must not re-download an object already in bronze")
 
-    result = fetch_location_day(
-        2178, date(2023, 1, 1), bronze_root=BRONZE_S3, downloader=explode
-    )
+    result = fetch_location_day(2178, date(2023, 1, 1), bronze_root=BRONZE_S3, downloader=explode)
     assert result.status == "skipped"
     assert result.bytes == len(b"already here")
 
@@ -163,8 +162,11 @@ def test_missing_archive_object_is_recorded_in_the_s3_manifest(monkeypatch):
         raise FileNotFoundError(key)
 
     results = fetch_range(
-        [2178], date(2023, 1, 12), date(2023, 1, 13),
-        bronze_root=BRONZE_S3, downloader=missing,
+        [2178],
+        date(2023, 1, 12),
+        date(2023, 1, 13),
+        bronze_root=BRONZE_S3,
+        downloader=missing,
     )
 
     assert {r.status for r in results} == {"missing"}
@@ -172,3 +174,58 @@ def test_missing_archive_object_is_recorded_in_the_s3_manifest(monkeypatch):
     assert len(manifest) == 2, "each attempt appends one line, not a rewrite of one"
     assert {json.loads(line)["status"] for line in manifest} == {"missing"}
     assert json.loads(manifest[0])["day"] == "2023-01-12"
+
+
+@pytest.mark.parametrize("backend", ["local", "s3"])
+@pytest.mark.parametrize("error_code,first_status", [("404", "missing"), ("SlowDown", "error")])
+def test_retry_after_source_failure_delivers_original_bytes_then_skips(
+    tmp_path,
+    monkeypatch,
+    backend,
+    error_code,
+    first_status,
+):
+    """Exercise the real ClientError handling and manifest across three scheduled runs."""
+    bucket = _use_fake_s3(monkeypatch) if backend == "s3" else None
+    root = BRONZE_S3 if bucket else str(tmp_path / "bronze")
+    content = b"unchanged OpenAQ archive bytes"
+    calls = []
+
+    class PublicArchive:
+        def download_file(self, bucket_name, key, destination):
+            calls.append((bucket_name, key))
+            if len(calls) == 1:
+                raise ClientError({"Error": {"Code": error_code}}, "GetObject")
+            Path(destination).write_bytes(content)
+
+    client = PublicArchive()
+
+    def download(bucket_name, key, destination):
+        return download_archive_object(bucket_name, key, destination, client=client)
+
+    def run():
+        return fetch_range(
+            [2178],
+            date(2023, 1, 12),
+            date(2023, 1, 12),
+            bronze_root=root,
+            downloader=download,
+        )[0]
+
+    failed = run()
+    assert failed.status == first_status
+    assert not storage.exists(storage.join(root, bronze_key(2178, date(2023, 1, 12))))
+    copied = run()
+    assert copied.status == "copied"
+    assert copied.bytes == len(content)
+    assert storage.read_bytes(copied.local_path) == content
+    skipped = run()
+    assert skipped.status == "skipped"
+    assert skipped.bytes == len(content)
+    assert len(calls) == 2, "An existing delivery must not trigger a third download"
+    records = [
+        json.loads(line)
+        for line in storage.read_text(storage.join(root, "_manifest.jsonl")).splitlines()
+    ]
+    assert [row["status"] for row in records] == [first_status, "copied"]
+    assert all(row["day"] == "2023-01-12" and row["locationid"] == 2178 for row in records)

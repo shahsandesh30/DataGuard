@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
@@ -99,6 +100,48 @@ def station_day(frame: pd.DataFrame, locationid: int, day: str) -> pd.DataFrame:
         (pd.to_numeric(frame["locationid"], errors="coerce") == locationid)
         & (frame["date_local"].astype(str) == day)
     ].copy()
+
+
+def _reading_records(frame: pd.DataFrame) -> list[dict]:
+    """Keep exact evidence fields, including empty legacy schemas, JSON safe."""
+    columns = [
+        "sensor_id",
+        "datetime",
+        "datetime_local",
+        "date_local",
+        "value",
+        "unit",
+        "original_unit",
+    ]
+    selected = frame.reindex(columns=columns).sort_values("datetime")
+    return json.loads(selected.to_json(orient="records", date_format="iso"))
+
+
+def _previous_week(
+    measurements: pd.DataFrame,
+    locationid: int,
+    day: str,
+    parameter: str,
+) -> tuple[pd.DataFrame, dict]:
+    """Select seven calendar dates strictly before the alert's local day."""
+    alert_day = date.fromisoformat(day)
+    start, end = alert_day - timedelta(days=7), alert_day - timedelta(days=1)
+    window = {
+        "start_local_date": start.isoformat(),
+        "end_local_date": end.isoformat(),
+        "requested_days": 7,
+        "available_local_dates": [],
+    }
+    if measurements.empty or not set(ALERT_KEY) <= set(measurements.columns):
+        return measurements.iloc[:0].copy(), window
+    dates = pd.to_datetime(measurements["date_local"], errors="coerce")
+    history = measurements.loc[
+        (pd.to_numeric(measurements["locationid"], errors="coerce") == locationid)
+        & (measurements["parameter"] == parameter)
+        & dates.between(pd.Timestamp(start), pd.Timestamp(end))
+    ].copy()
+    window["available_local_dates"] = sorted(history["date_local"].astype(str).unique().tolist())
+    return history, window
 
 
 def _incident_details(row: dict) -> dict:
@@ -223,29 +266,9 @@ def explain_alert(
         readings = readings[readings["parameter"] == parameter]
     else:
         readings = readings.iloc[:0]
-    columns = [
-        key
-        for key in ("sensor_id", "datetime", "datetime_local", "value", "unit", "original_unit")
-        if key in readings.columns
-    ]
-    readings = (
-        readings[columns]
-        .reindex(
-            columns=[
-                "sensor_id",
-                "datetime",
-                "datetime_local",
-                "value",
-                "unit",
-                "original_unit",
-            ]
-        )
-        .copy()
-    )
-    if "datetime" in readings.columns:
-        readings = readings.sort_values("datetime")
     if readings.empty:
         warnings.append("No matching silver measurements are available for this alert.")
+    history, history_window = _previous_week(measurements, locationid, date_local, parameter)
     provenance = {
         stage: _text((summaries or {}).get(stage, {}).get("built_at_utc"))
         for stage in ("layer1", "layer2", "fusion")
@@ -259,7 +282,7 @@ def explain_alert(
     ):
         warnings.append("A detector build is newer than fusion; the saved decision may be stale.")
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "alert": {"locationid": int(locationid), "date_local": date_local, "parameter": parameter},
         "decision": {
             "status": status,
@@ -278,7 +301,9 @@ def explain_alert(
         "recorded_agreement_count": agreement,
         "features": features,
         "quality_incidents": details,
-        "readings": json.loads(readings.to_json(orient="records", date_format="iso")),
+        "readings": _reading_records(readings),
+        "history_window": history_window,
+        "context_readings": _reading_records(history),
         "build_times_utc": provenance,
         "warnings": warnings,
         "interpretation": "Scores rank anomalies and apply a quality policy; they are not "

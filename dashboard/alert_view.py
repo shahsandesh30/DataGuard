@@ -19,6 +19,32 @@ def _selection(label: str, options: list, key: str):
     return st.selectbox(label, options, key=key)
 
 
+def _show_readings(records: list[dict], exact_label: str) -> None:
+    readings = pd.DataFrame(records)
+    readings["datetime"] = pd.to_datetime(readings["datetime"], utc=True, errors="coerce")
+    readings["Sensor"] = readings["sensor_id"].astype(str)
+    for unit, group in readings.groupby("unit", dropna=False):
+        plotted = group.dropna(subset=["datetime"])
+        if not plotted.empty:
+            st.line_chart(
+                plotted,
+                x="datetime",
+                y="value",
+                color="Sensor",
+                height=240,
+                x_label="Time (UTC)",
+                y_label=f"Conformed value ({unit})",
+                width="stretch",
+            )
+    st.caption(
+        "Each sensor is a separate series; different units use separate charts. "
+        "Lines connect observed readings, so inspect timestamps for gaps. Negative "
+        "and constant readings are retained."
+    )
+    with st.expander(exact_label):
+        st.dataframe(readings.drop(columns="Sensor"), hide_index=True, width="stretch")
+
+
 def render_alert_explorer(
     alerts: pd.DataFrame,
     incidents: pd.DataFrame,
@@ -148,30 +174,21 @@ def render_alert_explorer(
         st.caption("No supporting incident rows are loaded for this station-day.")
 
     st.markdown("**Readings for this alert**")
-    readings = pd.DataFrame(evidence["readings"])
-    if not readings.empty:
-        readings["datetime"] = pd.to_datetime(readings["datetime"], utc=True, errors="coerce")
-        readings["Sensor"] = readings["sensor_id"].astype(str)
-        for unit, group in readings.groupby("unit", dropna=False):
-            plotted = group.dropna(subset=["datetime"])
-            if not plotted.empty:
-                st.line_chart(
-                    plotted,
-                    x="datetime",
-                    y="value",
-                    color="Sensor",
-                    height=240,
-                    x_label="Time (UTC)",
-                    y_label=f"Conformed value ({unit})",
-                    width="stretch",
-                )
+    if evidence["readings"]:
+        _show_readings(evidence["readings"], "Exact readings and original units")
+
+    with st.expander("Previous seven days of readings"):
+        window = evidence["history_window"]
+        available = len(window["available_local_dates"])
         st.caption(
-            "Each sensor is a separate series; different units use separate charts. "
-            "Lines connect observed readings, so inspect timestamps for gaps. Negative "
-            "and constant readings are retained."
+            f"{window['start_local_date']} to {window['end_local_date']} (local dates). "
+            f"{available}/7 dates have readings for this station and pollutant. "
+            "A represented date can still contain gaps."
         )
-        with st.expander("Exact readings and original units"):
-            st.dataframe(readings.drop(columns="Sensor"), hide_index=True, width="stretch")
+        if evidence["context_readings"]:
+            _show_readings(evidence["context_readings"], "Exact historical readings")
+        else:
+            st.info("No readings are available in the preceding seven local dates.")
 
     with st.expander("Saved snapshots and build times"):
         st.json(

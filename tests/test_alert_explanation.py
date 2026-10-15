@@ -159,6 +159,45 @@ def test_missing_incident_rows_do_not_turn_quarantine_into_healthy(evidence_fram
     assert any("do not match" in warning for warning in report["warnings"])
 
 
+def test_history_uses_seven_prior_local_dates_and_the_selected_station_and_pollutant(
+    evidence_frames,
+):
+    fused, incidents, silver, alerts = evidence_frames
+    template = silver[
+        (silver["locationid"] == 100)
+        & (silver["date_local"] == "2026-01-01")
+        & (silver["parameter"] == "pm25")
+    ]
+    additions = []
+    # The first is outside the window; the last is after the selected alert day.
+    for day in ("2025-12-25", "2025-12-26", "2025-12-31", "2026-01-03"):
+        rows = template.copy()
+        rows["date_local"] = day
+        rows["datetime_local"] = pd.date_range(day, periods=len(rows), freq="h")
+        rows["datetime"] = (
+            rows["datetime_local"].dt.tz_localize("Australia/Sydney").dt.tz_convert("UTC")
+        )
+        additions.append(rows)
+    measurements = pd.concat([silver, *additions], ignore_index=True)
+    original = measurements.copy(deep=True)
+    report = _explain((fused, incidents, measurements, alerts), day="2026-01-02")
+    assert report["history_window"] == {
+        "start_local_date": "2025-12-26",
+        "end_local_date": "2026-01-01",
+        "requested_days": 7,
+        "available_local_dates": ["2025-12-26", "2025-12-31", "2026-01-01"],
+    }
+    assert len(report["context_readings"]) == 18
+    assert {row["sensor_id"] for row in report["context_readings"]} == {1000}
+    assert {row["value"] for row in report["context_readings"]} == {-2, 10}
+    assert {row["date_local"] for row in report["readings"]} == {"2026-01-02"}
+    # Sydney's first local hour belongs to the preceding UTC date.
+    assert report["context_readings"][0]["datetime"].startswith("2025-12-25T13:00")
+    assert report["decision"]["status"] == "escalated"
+    json.dumps(report, allow_nan=False)
+    pd.testing.assert_frame_equal(measurements, original)
+
+
 @pytest.mark.parametrize("bad_score", [0.5, None, float("nan"), -1])
 def test_bad_saved_scores_never_receive_a_verified_calculation(evidence_frames, bad_score):
     frames = copy.deepcopy(evidence_frames)
@@ -194,6 +233,8 @@ def test_zero_score_and_unknown_legacy_fields_are_not_invented(evidence_frames):
     assert report["decision"]["policy_penalty"] is None
     assert not report["decision"]["calculation_verified"]
     assert report["readings"] == []
+    assert report["context_readings"] == []
+    assert report["history_window"]["requested_days"] == 7
     assert any("snapshot is unavailable" in warning for warning in report["warnings"])
 
 
@@ -295,6 +336,7 @@ def test_streamlit_explainer_respects_filters_and_resets_dependent_selections(da
     app.selectbox(key="explain_station").select(200).run()
     assert not app.exception
     assert app.selectbox(key="explain_parameter").value == "pm25"
+    assert any(expander.label == "Previous seven days of readings" for expander in app.expander)
     assert next(metric for metric in app.metric if metric.label == "Policy penalty").value == "0%"
     assert any("Saved status: escalated" in info.value for info in app.info)
     # Expand the date scope, then constrain it again while a different station was selected.
@@ -305,6 +347,7 @@ def test_streamlit_explainer_respects_filters_and_resets_dependent_selections(da
     assert app.selectbox(key="explain_station").value == 100
     assert app.selectbox(key="explain_day").value == "2026-01-02"
     assert app.selectbox(key="explain_parameter").value == "pm25"
+    assert any("1/7 dates have readings" in caption.value for caption in app.caption)
     # Public mode never offers arbitrary data-root editing.
     assert len(app.text_input) == 0
 
@@ -324,3 +367,4 @@ render_alert_explorer(pd.DataFrame(ALERTS), pd.DataFrame(), pd.DataFrame(), {})
     assert any("snapshot is unavailable" in warning.value for warning in app.warning)
     votes = app.dataframe[0].value
     assert set(votes["Vote"]) == {"Unavailable"}
+    assert any("preceding seven local dates" in info.value for info in app.info)
