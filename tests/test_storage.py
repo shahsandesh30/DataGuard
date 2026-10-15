@@ -66,6 +66,18 @@ def test_local_text_round_trip(tmp_path):
     assert storage.read_text(target) == "replaced\n"
 
 
+@pytest.mark.parametrize("newline", [b"\n", b"\r\n", b"\r"])
+@pytest.mark.parametrize("as_str", [False, True])
+def test_text_reads_normalize_newlines_without_changing_binary_reads(tmp_path, newline, as_str):
+    target = tmp_path / "manifest.jsonl"
+    payload = newline.join(["µg/m³".encode(), b'{"status": "copied"}', b""])
+    target.write_bytes(payload)
+    uri = str(target) if as_str else target
+
+    assert storage.read_text(uri) == 'µg/m³\n{"status": "copied"}\n'
+    assert storage.read_bytes(uri) == payload
+
+
 def test_local_file_info_reports_size(tmp_path):
     target = storage.join(tmp_path, "note.txt")
     assert storage.file_info(target) is None

@@ -155,7 +155,8 @@ def render_configs(
             "GlueVersion": "5.1",
             "WorkerType": "G.1X",
             "NumberOfWorkers": 2,
-            "Timeout": 30,
+            # Bound scheduled runs; longer backfills can override the job timeout.
+            "Timeout": 60,
             "MaxRetries": 0,
             "ExecutionProperty": {"MaxConcurrentRuns": 1},
             "DefaultArguments": {
