@@ -311,6 +311,9 @@ with tab_alerts:
                 export_view[[c for c in ALERT_COLUMNS if c in export_view.columns]],
                 width="stretch",
             )
+
+        render_alert_explorer(fused_view, incidents, measurements, build_summaries)
+
         st.download_button(
             "Download filtered alerts (CSV)",
             data=export_view.to_csv(index=False).encode("utf-8-sig"),
@@ -319,8 +322,6 @@ with tab_alerts:
             disabled=export_view.empty,
             key="download_filtered_alerts",
         )
-
-        render_alert_explorer(fused_view, incidents, measurements, build_summaries)
 
         # ---------------------------------------------------------
         # Trust Score Trend
