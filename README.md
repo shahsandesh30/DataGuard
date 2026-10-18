@@ -1,257 +1,303 @@
 # DataGuard: Trust-Aware Anomaly Detection for Untrusted Data Pipelines
 
-**PRT661 – Data Science Practice | Charles Darwin University | Semester 2, 2026**
+**PRT661 - Data Science Practice | Charles Darwin University | Semester 2, 2026**
 
-## The problem
+DataGuard helps an analyst distinguish an unusual air-quality measurement from
+an unreliable data feed. It processes the OpenAQ archive, checks data health,
+detects unusual station-day patterns, and presents the evidence in a Streamlit
+dashboard.
 
-A monitoring system usually cannot tell a real event from a broken pipeline. If
-three of a city's five air-quality sensors go offline, the average reading
-changes — and a naive system reports that as "air quality improved."
+Two layers run independently: **Layer 1 checks the data**, while **Layer 2 looks
+for events**. Fusion then applies a quality penalty to each event score. An
+alert with a quality incident on the same station and local day is
+**quarantined**; other alerts are **escalated**. Both remain visible so a
+potential event is never silently removed by the trust policy.
 
-DataGuard runs two detectors that never talk to each other:
+![DataGuard dashboard with January-October 2026 trust trends and alert decisions](diagrams/Dashboard_UI.png)
 
-- **Layer 1** asks *was the data healthy?* (stuck sensors, missing files, gaps)
-- **Layer 2** asks *did something happen?* (pollution spikes)
+*Dashboard snapshot using the expanded 2026 dataset. The image shows a saved
+build completed on 15 October 2026, including the dashboard's stale-data
+warning; it is not a live status display.*
 
-Only at the end are they joined. An alert raised on a day when the data was
-broken is **quarantined** for review rather than escalated. Quarantined alerts
-are always shown, never deleted — this is public-safety data.
+## Progress since Assessment 3
+
+- **Longer data coverage:** extended the January-March collection with
+  April-October 2026 observations in S3, with the expanded results available in
+  the dashboard's trends and alerts.
+- **Model persistence and history:** save the latest fitted models and a
+  timestamped copy for each run, alongside build metadata and model-run trends.
+  The model-persistence and initial evaluation work was integrated from `main`.
+- **More reliable evaluation:** split raw readings by date before fitting
+  baselines and models, record input fingerprints and versions, and distinguish
+  weak-label agreement from measured event accuracy.
+- **Missing days made visible:** Layer 1 now includes bronze manifest attempts,
+  so a completely missing daily file can still produce a quality finding even
+  when there are no silver readings for that day.
+- **Controlled technical checks:** added synthetic data-quality faults,
+  fusion-policy scenarios, dashboard evidence checks, and a read-only verifier
+  for the frozen end-to-end snapshot.
+- **Explain one alert:** inspect detector votes, feature values, measurements,
+  previous-seven-day context, quality incidents, and the saved trust calculation;
+  download the evidence as JSON.
+- **Assessment evidence:** assembled the final report, screenshots, project
+  update summary, and technical evidence for the assessment handover.
+
+The [technical progress log](docs/assessment4-progress.md) records the five
+implementation steps, commands, results, and their limitations.
+
+## End-to-end architecture
+
+The lake follows **bronze -> silver -> gold**. Each stage reads materialised
+outputs, and the two detectors meet only at fusion.
+
+| Stage | Reads | Writes | Purpose |
+|---|---|---|---|
+| `ingest` | OpenAQ public archive | `bronze/` | Copy daily `.csv.gz` files unchanged and record successful and missing-file attempts in the arrival manifest. |
+| `conform` | `bronze/` | `silver/` | Harmonise names, units and timestamps; consolidate duplicate reading keys while retaining negative and stuck values. |
+| `quality` | `silver/` + `bronze/` | `gold/layer1/` | Build sensor-day and station-day metrics, apply quality rules, and fit an Isolation Forest when enough history is available. |
+| `detect` | `silver/` | `gold/layer2/` | Build station-day features and combine Isolation Forest, Local Outlier Factor and DBSCAN votes into ranked alerts. |
+| `fuse` | Layer 1 + Layer 2 gold | `gold/fusion/` | Retain every candidate, calculate trust, and assign escalated or quarantined status. |
+
+`trust_score = alert_score * (1 - quality_penalty)`, with penalties of 0.2,
+0.4 and 0.7 for low, medium and high severity. The highest severity applies;
+penalties do not stack. These scores are ranking and policy values, not
+probabilities of a real pollution event.
+
+Layer 1 reads bronze because file arrival, missing files and schema changes
+cannot be established from readings alone. Fusion is alert-driven: days with
+only quality findings remain available in the health and map views as
+`quality_only`, without inventing an event alert.
+
+See the [architecture](docs/architecture.md),
+[pipeline walkthrough](docs/pipeline.md), and [fusion specification](models/fusion_spec.md).
+Counts in older walkthrough examples describe their original snapshots.
+
+## Run locally
+
+From the repository root, using PowerShell:
+
+```powershell
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+
+# Explicit local roots take precedence over S3 settings in .env.
+$env:BRONZE_ROOT = "data/bronze"
+$env:SILVER_ROOT = "data/silver"
+$env:GOLD_ROOT = "data/gold"
+$env:MODELS_ROOT = "models"
+
+.\venv\Scripts\python.exe -m pipelines run `
+  --locations 1544061 1601414 2455394 6430870 `
+  --start 2026-01-01 --end 2026-01-31
+
+.\venv\Scripts\python.exe -m streamlit run dashboard/app.py
+```
+
+The dashboard opens at `http://localhost:8501`. Archive ingestion needs an
+internet connection, but local processing and the dashboard need no AWS account.
+For a runtime-only installation, use `requirements.txt`. On macOS/Linux, use
+`venv/bin/python` and the equivalent environment-variable syntax.
+
+Stages can also run separately against the configured roots:
+
+```powershell
+.\venv\Scripts\python.exe -m pipelines conform
+.\venv\Scripts\python.exe -m pipelines quality
+.\venv\Scripts\python.exe -m pipelines detect
+.\venv\Scripts\python.exe -m pipelines fuse
+```
+
+Layer 1's model needs at least 14 station-days for an eligible station; its
+rules still run below that threshold. Layer 2's ensemble needs at least 20
+feature rows and reports skipped fits when there is insufficient history.
+
+## Dashboard
+
+| View | What an analyst can inspect |
+|---|---|
+| **Trust-scored alerts** | Escalated and quarantined alerts, score trends, decision summaries, station history, and **Explain one alert** with a JSON evidence download. |
+| **Data health** | Quality metrics, rule/model incidents, missing data, and station-level issues. |
+| **Station map** | Station geography and escalated, quarantined, quality-only or monitored status. |
+| **Models** | Training/skipped status, build identifiers, model-run history, and offline evaluation results. |
+
+The explainer separates sensors and units, retains original units and timestamps,
+and warns when readings, context or build evidence are incomplete. `um003` is a
+particle-number measurement, not a mass concentration like PM2.5.
+
+The dashboard reads saved silver and gold; it does not fit models or write
+pipeline outputs. It caches reads for five minutes, displays build timestamps,
+and warns when the saved build is more than 36 hours old. Public mode hides
+root-editing controls. See the [dashboard guide](dashboard/README.md).
+
+## Recorded results
+
+### Expanded operational dataset
+
+The read-only S3 audit recorded on **15 October 2026** confirmed the following
+coverage and saved outputs. These are dated observations, not a claim about
+today's cloud state.
+
+| Measure | Recorded result |
+|---|---|
+| Earlier collection | January-March 2026: 116,211 readings |
+| Added collection | 1 April-12 October 2026, by local date: 289,826 readings from 2,515 archive files and 14 observed stations |
+| Complete silver | 406,037 readings, 16 observed stations, 78 sensors, five parameters, and 3,542 source files |
+| Conformance | Zero recorded source-file failures |
+| Layer 1 | 17,257 sensor-days; 3,565 observed station-days; 1,889 rule incidents and 47 model incidents |
+| Layer 2 | 10,127 feature rows and 4,153 candidate alerts |
+| Fusion | All 4,153 retained: **2,643 escalated and 1,510 quarantined**; no duplicate station/day/parameter keys |
+
+The added archive files are dated 1 April-11 October; timezone conversion
+extends the observations into local 12 October. October coverage is partial,
+and station availability varies by month. More history supports longer trend
+exploration; these volumes do not establish improved model accuracy.
+
+### Controlled evaluation
+
+The frozen January evaluation is a **separate population**: 38,449 readings at
+14 observed locations, covering local 1 January-1 February 2026. It must not be
+used as a paired before/after comparison with the expanded operational data.
+
+| Check | Result and interpretation | Evidence |
+|---|---|---|
+| Layer 1 fault benchmark | 18/18 injected fault cases and 27/27 expected rule checks detected. Healthy baseline: zero incidents; schema restoration caused 3 additional incidents across 360 control station-day occurrences. | [Measured report](docs/evaluation/step3-quality-benchmark.json), [model card](models/layer1_model_card.md) |
+| Layer 2 temporal holdout | PM2.5: 29/74 held-out rows flagged; 27/29 agree with a heuristic weak label, with lift 1.47 over its base rate. This is not verified event accuracy. | [Measured report](docs/evaluation/step2-benchmark.json), [model card](models/layer2_model_card.md) |
+| Layer 2 injected spikes | 5/27 PM2.5 cases detected (18.5%). Limited synthetic recall remains a model limitation. | [Method and limitations](models/layer2_model_card.md#evaluation) |
+| Fusion policy | All 175 candidates retained: 110 escalated and 65 quarantined; all 42 conditional policy checks passed. This measures policy consistency, not event recall or false-alert reduction. | [Measured report](docs/evaluation/step4-fusion-evaluation.json) |
+| Dashboard evidence | All 175 frozen alerts have consistent trust calculations and serialisable evidence; Streamlit AppTest checks representative escalated and quarantined cases. | [Measured report](docs/evaluation/step5-dashboard-check.json) |
+
+The final [snapshot verifier](scripts/verify_snapshot.py) checks saved input
+fingerprints, model references, candidate preservation, and policy/evidence
+consistency without refitting models or changing the frozen inputs.
+
+## Evaluation and verification commands
+
+Run the Layer 2 benchmark separately from the operational pipeline, using the
+explicit local roots above:
+
+```powershell
+.\venv\Scripts\python.exe -m pipelines evaluate
+```
+
+It writes `layer2/_detection_benchmark.json` under the configured gold root.
+The [progress log](docs/assessment4-progress.md#step-2-corrected-layer-2-evaluation-15-october-2026)
+describes the fixed-data experiment and its provenance.
+
+The Layer 1 benchmark creates synthetic inputs and isolated outputs under a
+**new, empty local directory**, independently of operational `.env` roots:
+
+```powershell
+.\venv\Scripts\python.exe -m pipelines.quality.benchmark `
+  --output-root data/evaluation/quality-check
+```
+
+It requires no AWS access or archive download. Use a fresh output directory
+for each rerun. To verify the team's existing frozen Step 4 snapshot:
+
+```powershell
+.\venv\Scripts\python.exe scripts/verify_snapshot.py `
+  --evaluation-root data/evaluation/step4-20261015 `
+  --output-root build/snapshot-verification
+```
+
+Raw data, frozen snapshots and trained model files are gitignored; this last
+command requires the local evaluation artifacts and will not work from a
+fresh clone alone. The small measured reports linked above are versioned.
+
+## Local and AWS storage
+
+`BRONZE_ROOT`, `SILVER_ROOT`, `GOLD_ROOT` and `MODELS_ROOT` accept local paths
+or `s3://` prefixes. Roots are independent, so a local dashboard can read an
+AWS lake. Check the active roots before running stages: S3 configuration makes
+the commands operate against AWS without an additional prompt.
+
+| Output | Layout |
+|---|---|
+| Bronze | `bronze/locationid=<ID>/year=<YYYY>/location-<ID>-<YYYYMMDD>.csv.gz` plus `_manifest.jsonl` |
+| Silver | `silver/locationid=<ID>/year=<YYYY>/` Parquet partitions |
+| Gold | `gold/{layer1,layer2,fusion}/<table>/locationid=<ID>/year=<YYYY>/` Parquet partitions |
+| Models | `<layer>/<name>.joblib` plus `<layer>/history/run=<UTC timestamp>/<name>.joblib` under `MODELS_ROOT` |
+
+Build metadata records training status and model-history references. Models
+are persisted for traceability; the processing stages still refit during a
+run rather than switching to a separate saved-model inference service.
+
+Silver keeps 12 columns: `locationid`, `sensor_id`, `location_name`, `datetime`
+(UTC), `datetime_local`, `date_local`, `latitude`, `longitude`, `parameter`,
+`unit`, `value`, and `original_unit`. Invalid-looking values remain available
+for quality checks; bronze preserves the original source bytes.
+
+S3 Parquet writes register datasets in the Glue Catalog, including
+`silver_data`, `layer1_quality_metrics`, `layer1_quality_sensor_metrics`,
+`layer1_quality_incidents`, `layer2_event_features`, `layer2_event_alerts`,
+and `fusion_trust_alerts`. Pipeline and dashboard reads go directly through
+the shared storage layer; Athena is available for separate SQL exploration.
+
+### Deployment status and remaining work
+
+The intended demo uses **AWS data and processing with a locally running
+dashboard**. The [AWS deployment guide](docs/aws-deployment.md) provides
+packaging, configuration and setup instructions; its direct-to-Glue schedule
+is a deployment template, not a description of the audited live schedule.
+
+The 15 October audit verified a successful April-October Glue backfill. It
+took 14 hours, 25 minutes and 38 seconds on two G.1X workers; this multi-month
+duration is not a daily-run performance measure. The enabled 06:00
+Australia/Sydney schedule targeted a Step Functions workflow for ingestion,
+silver processing and reconciliation. Automatic quality, detection and fusion
+refresh after that workflow was not verified. The uploaded Glue package also
+predated the final local model-storage and evaluation changes.
+
+The remaining technical handover is to align the deployed package, model root,
+timeout and Gold trigger with the reviewed repository, then verify an
+incremental run, output freshness and failure notification. A hosted dashboard
+is optional; no public deployment is claimed here.
+
+Known limitations include limited synthetic event recall, unlabelled real
+events, and quarantine of genuine events when data-quality issues coincide.
+R6 (file freshness) remains disabled because download time during a historical
+backfill is not a reliable measure of source publication lateness. R7 depends
+on archive filenames and local-day boundaries. The bronze manifest also needs
+serial ingestion writes. See the model cards and
+[risk register](docs/risk-register.md) for details.
+
+## Tests and CI
+
+Use the repository venv and explicit local roots from the quick start:
+
+```powershell
+.\venv\Scripts\python.exe -m pytest
+.\venv\Scripts\python.exe -m ruff check pipelines dashboard tests glue scripts
+.\venv\Scripts\python.exe scripts/package_glue.py
+```
+
+Tests cover storage, conformance, detector/evaluation logic, missing days,
+fusion, dashboard evidence, and end-to-end wiring. AWS paths use fake clients
+and need no credentials. [CI](.github/workflows/ci.yml) runs pytest and Ruff on
+Python 3.11 and import-checks the packaged Glue ZIP on pushes and pull requests.
 
 ## Team
 
 | Name | Role | Responsibility |
 |---|---|---|
-| Sandesh Shahi | Project lead | Fusion layer, repo governance, architecture, integration, reporting |
-| Aadarsh Ghimire | Data engineer | Ingestion, bronze/silver/gold zone design, partitioning, Glue Catalog |
-| Orchid Shrestha | Data quality engineer | Layer 1 quality metrics, schema drift testing, quality anomaly model |
-| Sandesh Prasad Paudel | ML engineer | Layer 2 feature engineering, detector ensemble, model evaluation |
-| Shuvechchha Pun | Analytics & visualisation | Gold table design, Athena queries, dashboard, station mapping |
-
-## The pipeline
-
-Five stages. Each one reads the zone the previous one wrote — there is no hidden
-state between them, so any stage can be re-run on its own.
-
-| Stage | Reads | Writes | What it does |
-|---|---|---|---|
-| `ingest` | OpenAQ public archive | `bronze/` | Copies daily `.csv.gz` files, byte for byte. Logs every attempt — including files that were *missing*, because a gap in the source is itself a signal. |
-| `conform` | `bronze/` | `silver/` | One harmonised table: canonical names and units, parsed timestamps, de-duplicated. Nothing is dropped. |
-| `quality` | `silver/` + `bronze/` | `gold/layer1/` | **Layer 1.** Per-sensor-day and per-station-day metrics → rules → Isolation Forest. |
-| `detect` | `silver/` | `gold/layer2/` | **Layer 2.** PM features per station-day → IF + LOF + DBSCAN ensemble → ranked alerts. |
-| `fuse` | `gold/` | `gold/fusion/` | Joins the two on (station, day). `trust = alert_score × (1 − penalty)`. |
-
-[`docs/pipeline.md`](docs/pipeline.md) traces this properly: which file runs at
-each step, and what you should see.
-
-Two things are worth knowing about the shape of this:
-
-- **`quality` reads bronze as well as silver.** Whether a file arrived, when it
-  arrived, and whether its columns changed are properties of the *delivered
-  file*, not of the readings inside it.
-- **`fuse` is alert-driven.** No Layer 2 alerts means no fusion rows, even if
-  Layer 1 found plenty. Those Layer-1-only findings still reach the dashboard as
-  `quality_only`.
-
-## Running it
-
-```bash
-python -m venv venv
-venv\Scripts\activate          # macOS/Linux: source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-```
-
-For development (tests and lint), install `requirements-dev.txt` instead.
-
-Everything defaults to the local `data/` directory. No AWS account is needed.
-
-```bash
-# everything, end to end
-python -m pipelines run --locations 1544061 1601414 2455394 6430870 \
-                        --start 2026-01-01 --end 2026-01-31
-
-# or one stage at a time, against whatever is already on disk
-python -m pipelines ingest --locations 2178 --start 2023-01-01 --end 2023-01-31
-python -m pipelines conform
-python -m pipelines quality
-python -m pipelines detect
-python -m pipelines fuse
-
-# offline Layer 2 benchmark (holdout + injected spikes); not part of `run`
-python -m pipelines evaluate
-
-streamlit run dashboard/app.py
-```
-
-For a scheduled incremental run, use the small scheduler entry point. With no
-dates it retries a seven-day window ending three days ago, so newly published
-or late archive files are picked up without maintaining separate state:
-
-```bash
-python glue/run_pipeline.py
-python glue/run_pipeline.py --start 2026-01-01 --end 2026-01-31  # backfill
-```
-
-The demo AWS setup, artifact upload, Glue job, daily EventBridge schedule,
-failure alerts, and Streamlit deployment are documented in
-[`docs/aws-deployment.md`](docs/aws-deployment.md). The helper scripts generate
-the account-specific policies and package the pipeline; AWS creation remains a
-deliberate manual step for restricted/AWS Academy accounts.
-
-Both models are gated on history — Layer 1's Isolation Forest needs 14
-station-days for some location, Layer 2's ensemble needs 20 feature rows. Below
-that a stage runs rules-only and says so in its log line, rather than fitting on
-noise. **Empty model output on a small sample is expected, not a bug.**
-
-## Layout
-
-```
-pipelines/
-  config.py         every threshold and zone root, in one file
-  storage.py        read/write a zone — local directory or S3, same calls
-  ingestion/        OpenAQ archive -> bronze
-  conformance/      bronze -> silver  (conform.py, units.py)
-  quality/          Layer 1  (metrics.py -> rules.py -> detector.py -> build.py)
-  detection/        Layer 2  (features.py -> ensemble.py -> build.py;
-                              evaluation.py per-run metrics, benchmark.py offline)
-  fusion/           trust scoring  (trust_score.py, build.py)
-  __main__.py       the CLI
-dashboard/app.py    Streamlit: alerts, Layer 1 health, station map
-tests/              pytest; no test needs AWS credentials
-```
-
-### Zones on disk
-
-| Zone | Path | Format |
-|---|---|---|
-| Bronze | `data/bronze/locationid=<ID>/year=<YYYY>/location-<ID>-<YYYYMMDD>.csv.gz` | gzip CSV, as fetched |
-| Silver | `data/silver/locationid=<ID>/year=<YYYY>/part-0.parquet` | Parquet |
-| Gold | `data/gold/{layer1,layer2,fusion}/<table>/locationid=<ID>/year=<YYYY>/` | Parquet |
-
-Silver, Layer 1, and fusion hold a `_build.json` summary of the last run; Layer
-2 retains its existing `_detection_build.json`. Bronze holds `_manifest.jsonl`,
-the arrival log that `quality` reads.
-
-**Silver schema** (12 columns): `locationid`, `sensor_id`, `location_name`,
-`datetime` (UTC), `datetime_local`, `date_local`, `latitude`, `longitude`,
-`parameter`, `unit`, `value`, `original_unit`.
-
-Readings are conformed but never dropped or clipped. Negative concentrations and
-stuck values survive into silver on purpose — Layer 1 exists to find them — and
-`original_unit` is kept so it can tell a converted value from a mislabelled one.
-
-## Running against AWS
-
-A zone root is just a string: `data/silver` is a directory, `s3://bucket/silver`
-is an S3 prefix. `pipelines/storage.py` dispatches on the scheme, so moving a
-zone to AWS is a config change, not a code change.
-
-```bash
-python -m pipelines run --locations 2392564 --start 2026-08-01 --end 2026-08-31 \
-  --bronze-root s3://dataguard-openaq-bronze \
-  --silver-root s3://dataguard-openaq-silver \
-  --gold-root   s3://dataguard-openaq-gold
-```
-
-…or permanently, by uncommenting the `s3://` lines in `.env`. Zones are
-independent — S3 bronze with local gold is valid.
-
-Parquet written to S3 is registered in the **Glue Catalog** on the way out, so
-Athena sees it with no crawler run: `silver_data`, `layer1_quality_metrics`,
-`layer1_quality_sensor_metrics`, `layer1_quality_incidents`,
-`layer2_event_features`, `layer2_event_alerts`, `fusion_trust_alerts`.
-
-Silver registers as `silver_data` for Athena users. The pipeline itself reads
-silver and gold directly through the shared storage layer: same bytes, no
-workgroup needed, no per-query charge.
+| Sandesh Shahi | Project lead | Fusion, architecture, integration, repository governance and reporting |
+| Aadarsh Ghimire | Data engineer | Ingestion, dataset expansion, lake zones, Glue Catalog and AWS processing |
+| Orchid Shrestha | Data quality engineer | Layer 1 metrics, missing-day handling, quality rules and fault benchmarks |
+| Sandesh Prasad Paudel | ML engineer | Layer 2 features, detector ensemble, model persistence and evaluation |
+| Shuvechchha Pun | Analytics and visualisation | Dashboard, alert explanation, station mapping and analytical presentation |
 
 ## Documentation
 
-| File | Contents |
+| Resource | Contents |
 |---|---|
-| [`docs/pipeline.md`](docs/pipeline.md) | **Start here.** Step-by-step: what runs, in which file, what to expect |
-| [`docs/architecture.md`](docs/architecture.md) | Why it is shaped this way — two-layer design, medallion zones, batch |
-| [`docs/data-source.md`](docs/data-source.md) | OpenAQ, the archive layout, and the documented degradation events E1-E8 |
-| [`docs/risk-register.md`](docs/risk-register.md) | Project risks and the mid-project go/no-go gate |
-| [`models/`](models/) | Model cards for both layers, and the fusion trust-score spec |
-| [`docs/aws-deployment.md`](docs/aws-deployment.md) | Demo deployment: S3, Glue 5.1, EventBridge Scheduler, SNS, and Streamlit |
-| [`CLAUDE.md`](CLAUDE.md) | Repo conventions and gotchas, for anyone (or anything) editing the code |
-
-## Tests
-
-```bash
-python -m pytest                                  # 89 tests
-python -m ruff check pipelines dashboard tests glue scripts
-```
-
-The S3 path is tested against a fake awswrangler, so the suite runs with no
-credentials. CI runs the same checks on Python 3.11 and also import-checks the
-Glue source ZIP. The same lint gate now covers Layer 2 as well as the rest of
-the pipeline.
-
-## Where it stands
-
-Latest audited local run over the current bronze snapshot:
-
-| | |
-|---|---|
-| Bronze | 342 data files across 14 stations |
-| Silver | 38,449 rows across 32 local dates |
-| Layer 1 | 353 station-days → 139 rule incidents + 2 model incidents |
-| Layer 2 | 995 feature rows → 253 detector-backed alerts |
-| Fusion | 253 alerts — **181 escalated, 72 quarantined** |
-
-| Phase | Gate | Status |
-|---|---|---|
-| Foundation | Data queryable via Athena | Working, local and S3 |
-| Conformance | Single queryable table | Working |
-| Layer 1 | Detects known failures unprompted | All 18 controlled fault cases detected; three additional schema-reversion incidents — see [model card](models/layer1_model_card.md#controlled-fault-benchmark-15-october-2026) |
-| Layer 2 | Ranked anomaly output | Working; proxy metrics and corrected temporal/injected-spike benchmarks — see [model card](models/layer2_model_card.md#evaluation) |
-| Fusion | Public dashboard URL | Offline fusion evaluation ready; human review pending; dashboard runs locally, not deployed |
-| Consolidation | Final report | Not started |
-
-## Next steps
-
-1. **Complete the two-person alert review.** The [Step 4 evidence page](docs/evaluation/step4-review/review.html)
-   contains 20 PM2.5 cases for independent judgments. Follow the
-   [review guide](docs/fusion-review.md); the automated fusion run preserves all
-   175 candidates, escalating 110 and holding 65. This quarantine count does
-   not establish false-alert reduction or real-event accuracy.
-2. **Run the documented AWS backfill and enable the schedule**, then verify one
-   success and one controlled failure alert.
-3. **Deploy the dashboard** from `main`. Add Terraform only after the demo is
-   stable; the current manual AWS setup is intentionally small.
-
-The offline Layer 1 benchmark creates its own synthetic bronze, silver, gold,
-and model outputs under a **new, empty local directory**, ignoring operational
-roots in `.env`:
-
-```powershell
-venv\Scripts\python.exe -m pipelines.quality.benchmark --output-root data/evaluation/quality-check
-```
-
-It tests six faults at three station-days each, records expected and observed
-rules, misses, raw model flags, and additional control incidents in
-`quality-benchmark.json`. Reuse requires a new output directory. See the
-[assessment progress](docs/assessment4-progress.md#step-3-missing-days-and-layer-1-fault-benchmark-15-october-2026)
-for the recorded run and limitations.
-
-The [offline fusion evaluation](docs/fusion-review.md) freezes local inputs,
-rebuilds both layers independently, checks candidate preservation and policy
-behavior, and generates the two-person review pack. Its results use a fresh
-isolated build; the older pipeline counts above are historical snapshots.
-
-The dashboard's **Explain one alert** view now brings together saved detector
-votes, feature values, readings, station-day quality incidents, and the trust
-penalty. Quarantined alerts remain visible and human review is explicitly
-unrecorded. See the [dashboard guide](dashboard/README.md#explain-one-alert)
-for local launch instructions and evidence downloads.
-
-### Why R6 is currently disabled
-
-`file_lateness_hours` is measured from when *we downloaded* a file, against
-OpenAQ's 72-hour publication commitment. Backfilling January in September made
-every file ~240 days "late", so R6 fired on 90 of 98 station-days and dragged
-almost every alert into quarantine — 160 of 164. The metric is still computed
-and still feeds the Layer 1 model; only the rule is off. Restore it once the
-pipeline runs on a schedule, where the measurement means something.
+| [Technical progress](docs/assessment4-progress.md) | Post-Assessment 3 implementation steps and measured checks |
+| [Architecture](docs/architecture.md) | Independent layers, medallion zones and design decisions |
+| [Pipeline](docs/pipeline.md) | Stage internals and example runs |
+| [Data source](docs/data-source.md) | OpenAQ archive, schemas and documented degradation events |
+| [Dashboard guide](dashboard/README.md) | Views, alert evidence, local launch and read-only behaviour |
+| [Layer 1 model card](models/layer1_model_card.md) | Quality rules, model and fault-benchmark limitations |
+| [Layer 2 model card](models/layer2_model_card.md) | Features, ensemble, temporal evaluation and synthetic recall |
+| [Fusion specification](models/fusion_spec.md) | Trust penalties and quarantine policy |
+| [AWS deployment](docs/aws-deployment.md) | Configuration templates, packaging and deployment procedure |
+| [Risk register](docs/risk-register.md) | Project risks and mitigations |
