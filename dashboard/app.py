@@ -25,6 +25,14 @@ if str(ROOT) not in sys.path:
 
 from dashboard.alert_view import render_alert_explorer
 from dashboard.data import (  # noqa: E402 — needs ROOT on sys.path first
+    STATUS_COLORS, available_dates, build_station_status, filter_by_date,
+    last_run_models, latest_build_time, latest_model_runs, load_benchmark,
+    load_build_summaries, load_dashboard_frames, load_model_runs,
+    load_stations)
+from dashboard.runtime import apply_runtime_secrets  # noqa: E402
+from dashboard.runtime import is_public_dashboard
+from dashboard.alert_view import render_alert_explorer
+from dashboard.data import (  # noqa: E402 — needs ROOT on sys.path first
     STATUS_COLORS,
     available_dates,
     build_station_status,
@@ -255,6 +263,69 @@ with tab_alerts:
         c4.metric(
             "Mean trust score",
             f"{fused_view['trust_score'].mean():.2f}",
+        )
+
+        # Explain the metrics without changing the fusion decision policy.
+        with st.expander("ℹ️ Understanding trust scores and alert decisions"):
+            st.markdown(
+                """
+                **Trust scores** summarise confidence in the data supporting an alert.
+                Higher scores indicate stronger supporting data quality; lower scores
+                indicate that the evidence should be treated with greater caution.
+
+                - **Escalated:** an anomaly alert without a coincident quality incident.
+                - **Quarantined:** an anomaly alert with a data-health incident.
+                It remains visible for review and is never deleted from this view.
+
+                Review the detector evidence and Layer 1 quality incidents before
+                interpreting an individual alert. A trust score is not a probability
+                that an anomaly is genuine.
+                """
+            )
+
+        # Interactive filtering and export for review; does not change fusion decisions.
+        st.subheader("Filter and export alerts")
+        filter_status_col, filter_pollutant_col = st.columns(2)
+        with filter_status_col:
+            status_options = sorted(fused_view["status"].dropna().astype(str).unique().tolist())
+            selected_status = st.selectbox(
+                "Alert status", ["All statuses", *status_options], key="export_status_filter"
+            )
+        with filter_pollutant_col:
+            pollutant_options = (
+                sorted(fused_view["parameter"].dropna().astype(str).unique().tolist())
+                if "parameter" in fused_view.columns else []
+            )
+            selected_pollutant = st.selectbox(
+                "Pollutant", ["All pollutants", *pollutant_options],
+                key="export_pollutant_filter",
+            )
+
+        export_view = fused_view.copy()
+        if selected_status != "All statuses":
+            export_view = export_view.loc[export_view["status"] == selected_status]
+        if selected_pollutant != "All pollutants":
+            export_view = export_view.loc[export_view["parameter"] == selected_pollutant]
+
+        st.caption(
+            f"Showing {len(export_view)} of {len(fused_view)} alerts for export. "
+            "Filters apply only to the preview and CSV below; "
+            "the alert explorer, charts, and metrics remain unchanged."
+        )
+        if export_view.empty:
+            st.info("No alerts match these filters. Try a different status or pollutant.")
+        else:
+            st.dataframe(
+                export_view[[c for c in ALERT_COLUMNS if c in export_view.columns]],
+                width="stretch",
+            )
+        st.download_button(
+            "Download filtered alerts (CSV)",
+            data=export_view.to_csv(index=False).encode("utf-8-sig"),
+            file_name="dataguard_filtered_alerts.csv",
+            mime="text/csv",
+            disabled=export_view.empty,
+            key="download_filtered_alerts",
         )
 
         render_alert_explorer(fused_view, incidents, measurements, build_summaries)
