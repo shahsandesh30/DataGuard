@@ -25,14 +25,6 @@ if str(ROOT) not in sys.path:
 
 from dashboard.alert_view import render_alert_explorer
 from dashboard.data import (  # noqa: E402 — needs ROOT on sys.path first
-    STATUS_COLORS, available_dates, build_station_status, filter_by_date,
-    last_run_models, latest_build_time, latest_model_runs, load_benchmark,
-    load_build_summaries, load_dashboard_frames, load_model_runs,
-    load_stations)
-from dashboard.runtime import apply_runtime_secrets  # noqa: E402
-from dashboard.runtime import is_public_dashboard
-from dashboard.alert_view import render_alert_explorer
-from dashboard.data import (  # noqa: E402 — needs ROOT on sys.path first
     STATUS_COLORS,
     available_dates,
     build_station_status,
