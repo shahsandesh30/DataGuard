@@ -1,0 +1,4 @@
+parameter,retained_candidates,if_flag,lof_flag,dbscan_flag,votes_1,votes_2,votes_3
+pm1,56,31,32,10,44,7,5
+pm25,60,36,36,11,42,13,5
+um003,59,32,32,7,47,12,0

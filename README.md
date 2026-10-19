@@ -193,17 +193,25 @@ The Layer 1 benchmark creates synthetic inputs and isolated outputs under a
 ```
 
 It requires no AWS access or archive download. Use a fresh output directory
-for each rerun. To verify the team's existing frozen Step 4 snapshot:
+for each rerun. The strict Step 4 verifier checks the producing pipeline's
+source hashes as well as saved data. Run it from an isolated checkout of
+producing revision `d131715`, passing the frozen bundle's absolute path:
 
 ```powershell
 .\venv\Scripts\python.exe scripts/verify_snapshot.py `
-  --evaluation-root data/evaluation/step4-20261015 `
+  --evaluation-root D:/path/to/frozen/step4-20261015 `
   --output-root build/snapshot-verification
 ```
 
 Raw data, frozen snapshots and trained model files are gitignored; this last
 command requires the local evaluation artifacts and will not work from a
 fresh clone alone. The small measured reports linked above are versioned.
+
+The [Assessment 3 feedback evidence](docs/evaluation/assessment3-feedback/README.md)
+adds penalty-ranking sensitivity, saved detector-vote summaries and three
+worked examples without refitting models or changing production policy. Its
+analysis can run from the current release against the existing frozen bundle;
+the strict historical verifier intentionally rejects later pipeline changes.
 
 ## Local and AWS storage
 

@@ -403,3 +403,55 @@ Local JUnit logs are `build/assessment4-step5/working-tree-tests.xml` and
 `build/assessment4-step5/staged-source-tests.xml`. Existing unrelated edits and
 raw evaluation/model artifacts are excluded from the Step 5 commit. Step 4's
 independent human review is still open.
+
+## Assessment 3 written feedback response (19 October 2026)
+
+The response prioritises report evidence and small analyses of existing saved
+outputs. Independent expert review, public hosting and new cloud runs remain
+deferred. No detector, feature, penalty, status policy, schema or dashboard
+behaviour is changed by this response.
+
+### Separately released reliability correction
+
+Commit `3e7e56b` releases the existing local daylight-saving correction and its
+regression test. The previously committed parser raises a mixed-timezone error
+with pandas 3.0.5 on Sydney timestamps spanning 5 April 2026's offset change.
+Parsing each value before removing its timezone preserves local wall-clock
+times. The regression retains four readings, the repeated 02:00 local hour,
+one local date and four distinct UTC instants.
+
+Both the full working tree and isolated intended release pass **191 tests**.
+Ruff and the Glue source ZIP import check pass in both trees. The isolated
+source excludes the other existing local AWS/runner edits. JUnit reports are
+retained locally as `build/feedback-response/tests.xml` and
+`build/feedback-response/release-tests.xml`. Windows temporary/cache paths were
+explicitly placed inside the writable workspace after permission failures in
+the host temporary directory; no application change was made for that issue.
+
+### Saved-output analysis
+
+The [feedback evidence](evaluation/assessment3-feedback/README.md) includes a
+standalone analysis, input fingerprints, strict JSON, CSV comparisons and three
+worked examples. The frozen 175 candidates retain 110 escalated and 65
+quarantined statuses under all four illustrative penalty sets. Mild and
+stronger penalties preserve each parameter's current top ten; removing
+penalties changes one leading PM2.5 and one particle-number candidate.
+Ranking is within parameter over the entire frozen window, separately from
+the operational daily cap. No low-severity candidates are present.
+
+The saved alerts contain 133 one-vote, 32 two-vote and ten three-vote candidates.
+IF votes on 99, LOF on 100 and DBSCAN on 28. These are overlapping counts within
+an already selected population, not an ablation or event-accuracy comparison.
+All **562 files** of the complete frozen bundle remain byte-identical.
+
+The historical producer was separately exported at `d131715` for the strict
+snapshot verifier. It again passes 175 alert checks and 42/42 conditional
+policy checks, including 454 original input-file fingerprints and model
+references. The later timestamp fix is not misrepresented as the producer of
+those frozen experiments. The verifier intentionally rejects changed source;
+its revision argument cannot override the source-fingerprint check.
+
+The expanded 4,153-alert operational result, historical 253-alert local result
+and corrected 175-alert January result remain separate populations. The report
+response retains the 5/27 synthetic-event result and states the cloud-release,
+daily-refresh, failure-notification and independent-validation gaps explicitly.
