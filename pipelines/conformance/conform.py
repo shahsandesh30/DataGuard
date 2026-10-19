@@ -109,10 +109,22 @@ def _rename_raw_columns(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def _naive_local(series: pd.Series) -> pd.Series:
-    parsed = pd.to_datetime(series, utc=False, errors="coerce")
-    if getattr(parsed.dtype, "tz", None) is not None:
-        return parsed.dt.tz_localize(None)
-    return parsed
+    """Parse local timestamps while supporting mixed daylight-saving offsets."""
+
+    def parse_one(value):
+        if pd.isna(value):
+            return pd.NaT
+
+        parsed = pd.to_datetime(value, errors="coerce")
+        if pd.isna(parsed):
+            return pd.NaT
+
+        if parsed.tzinfo is not None:
+            parsed = parsed.tz_localize(None)
+
+        return parsed
+
+    return pd.to_datetime(series.map(parse_one), errors="coerce")
 
 
 def _synthetic_sensor_id(locationid: pd.Series, parameter: pd.Series) -> pd.Series:

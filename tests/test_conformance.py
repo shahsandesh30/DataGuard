@@ -89,6 +89,24 @@ def test_conform_measurements_renames_parses_and_keeps_negatives():
     assert (conformed["value"] < 0).sum() == 1
 
 
+def test_conform_measurements_handles_mixed_daylight_saving_offsets():
+    raw = pd.DataFrame(
+        [
+            _raw_row(datetime="2026-04-05T01:00:00+11:00"),
+            _raw_row(datetime="2026-04-05T02:00:00+11:00"),
+            _raw_row(datetime="2026-04-05T02:00:00+10:00"),
+            _raw_row(datetime="2026-04-05T03:00:00+10:00"),
+        ]
+    )
+
+    conformed = conform_measurements(raw)
+
+    assert conformed["datetime_local"].dtype == "datetime64[us]"
+    assert conformed["date_local"].tolist() == ["2026-04-05"] * 4
+    assert conformed["datetime_local"].dt.hour.tolist() == [1, 2, 2, 3]
+    assert conformed["datetime"].nunique() == 4
+
+
 def test_conform_measurements_empty_returns_schema():
     conformed = conform_measurements(pd.DataFrame())
     assert list(conformed.columns) == SILVER_COLUMNS
